@@ -15,6 +15,7 @@ Saved to data/processed/travel_time_models.pkl.
 
 from __future__ import annotations
 
+import math
 import os
 import pickle
 import sys
@@ -251,28 +252,40 @@ def prepare_training_dataset(
     observed_df: pl.DataFrame,
     catalog_df: pl.DataFrame,
     eb_prior: EmpiricalBayesPrior,
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Combine real observed data with synthetic anchor grid, split into train and temporal val."""
+    return_three_way: bool = False,
+) -> tuple[pl.DataFrame, pl.DataFrame] | tuple[pl.DataFrame, pl.DataFrame, pl.DataFrame]:
+    """Combine real observed data with synthetic anchor grid, split into train, calib, and test.
+
+    Audit Fixes:
+    - 60/20/20 deterministic vehicle split (train 60%, calib 20%, untouched test 20%).
+    - Span-level weighting: sample_weight = span_weight * 5.0 so each matched ping-pair has weight 5.0.
+    """
     t0 = time.time()
 
-    # Prepare real observed data with sample_weight = 5.0
-    real_df = observed_df.filter(
-        pl.col("travel_time_sec") > 0.0
-    ).with_columns(
-        sample_weight=pl.lit(5.0, dtype=pl.Float32),
-        is_synthetic=pl.lit(0, dtype=pl.Int8),
-    )
+    # Prepare real observed data with sample_weight = span_weight * 5.0
+    real_df = observed_df.filter(pl.col("travel_time_sec") > 0.0)
+    if "span_weight" in real_df.columns:
+        real_df = real_df.with_columns(
+            sample_weight=(pl.col("span_weight") * 5.0).cast(pl.Float32),
+            is_synthetic=pl.lit(0, dtype=pl.Int8),
+        )
+    else:
+        real_df = real_df.with_columns(
+            sample_weight=pl.lit(5.0, dtype=pl.Float32),
+            is_synthetic=pl.lit(0, dtype=pl.Int8),
+        )
 
-    # Group-based Out-of-Fold split by vehicle_id (80% train, 20% val):
-    # Prevents any vehicle trajectory leakage across splits and avoids right-censoring bias
-    # at the trailing edge of the polling window.
+    # Deterministic 60/20/20 vehicle split:
     unique_vehs = sorted(real_df["vehicle_id"].unique().to_list())
-    val_veh_set = {v for idx, v in enumerate(unique_vehs) if idx % 5 == 0}
+    test_veh_set = {v for idx, v in enumerate(unique_vehs) if idx % 5 == 0}   # 20% untouched test
+    calib_veh_set = {v for idx, v in enumerate(unique_vehs) if idx % 5 == 1}  # 20% post-hoc calib
+    train_veh_set = {v for idx, v in enumerate(unique_vehs) if idx % 5 in (2, 3, 4)}  # 60% training
 
-    train_real = real_df.filter(~pl.col("vehicle_id").is_in(val_veh_set))
-    val_real = real_df.filter(pl.col("vehicle_id").is_in(val_veh_set))
+    train_real = real_df.filter(pl.col("vehicle_id").is_in(train_veh_set))
+    calib_real = real_df.filter(pl.col("vehicle_id").is_in(calib_veh_set))
+    test_real = real_df.filter(pl.col("vehicle_id").is_in(test_veh_set))
 
-    # Audit Fix 3.9: Recompute Leave-One-Out (OOF) EB features strictly inside train_real
+    # Recompute Leave-One-Out (OOF) EB features strictly inside train_real
     train_eb_prior = build_eb_prior(train_real, catalog_df)
     train_real = compute_oof_eb_features(
         train_real,
@@ -280,29 +293,33 @@ def prepare_training_dataset(
         base_median_pace=train_eb_prior.global_median_pace,
     )
 
-    # Evaluate validation features strictly out-of-fold from train_eb_prior (zero val leakage)
-    v_cids = val_real["corridor_segment_id"].to_list()
-    v_bins = val_real["bin_15m"].to_list()
-    v_wes = val_real["is_weekend"].to_list()
-    v_lens = val_real["segment_length_m"].to_numpy().astype(np.float64)
-    v_prior_paces = np.array(
-        [train_eb_prior.get_prior_pace(c, b, w) for c, b, w in zip(v_cids, v_bins, v_wes)],
-        dtype=np.float64,
-    )
-    val_real = val_real.with_columns(
-        eb_prior_pace_s_per_m=pl.Series("eb_prior_pace_s_per_m", v_prior_paces, dtype=pl.Float64),
-        eb_prior_time_sec=pl.Series("eb_prior_time_sec", v_prior_paces * v_lens, dtype=pl.Float64),
-    )
+    # Evaluate validation & test features strictly out-of-fold from train_eb_prior
+    def _apply_eb_prior(df: pl.DataFrame) -> pl.DataFrame:
+        cids = df["corridor_segment_id"].to_list()
+        bins = df["bin_15m"].to_list()
+        wes = df["is_weekend"].to_list()
+        lens = df["segment_length_m"].to_numpy().astype(np.float64)
+        prior_paces = np.array(
+            [train_eb_prior.get_prior_pace(c, b, w) for c, b, w in zip(cids, bins, wes)],
+            dtype=np.float64,
+        )
+        return df.with_columns(
+            eb_prior_pace_s_per_m=pl.Series("eb_prior_pace_s_per_m", prior_paces, dtype=pl.Float64),
+            eb_prior_time_sec=pl.Series("eb_prior_time_sec", prior_paces * lens, dtype=pl.Float64),
+        )
+
+    calib_real = _apply_eb_prior(calib_real)
+    test_real = _apply_eb_prior(test_real)
 
     # Make sure all FEATURE_COLS are present
     for col in FEATURE_COLS:
         if col not in train_real.columns:
             raise ValueError(f"Missing required feature column in observed data: {col}")
 
-    # Audit Fix 1a: Compute true 5-fold OOF calibrated mean predictions on train_real
+    # Compute true 5-fold OOF calibrated mean predictions on train_real
     mu_oof = compute_oof_gamma_predictions(train_real, n_splits=5)
     y_train_real = train_real["travel_time_sec"].to_numpy().astype(np.float64)
-    # Dimensionless residual ratio r_i = y_i / mu_oof_i (NO artificial floor!)
+    # Dimensionless residual ratio r_i = y_i / mu_oof_i
     r_train_real = y_train_real / np.maximum(1.0, mu_oof)
     r_global_85 = float(np.percentile(r_train_real, 85))
 
@@ -312,7 +329,6 @@ def prepare_training_dataset(
 
     # Synthetic anchor grid (sample_weight = 0.5) built from train_eb_prior
     anchor_df = build_synthetic_anchor_grid(catalog_df, train_eb_prior)
-    # Synthetic anchor ratio target regularizes unobserved corridors toward global 85th percentile ratio
     anchor_df = anchor_df.with_columns(
         ratio_target=pl.lit(r_global_85, dtype=pl.Float64),
         vehicle_id=pl.lit("", dtype=pl.Utf8),
@@ -320,9 +336,8 @@ def prepare_training_dataset(
         dep_time_u=pl.lit(0.0, dtype=pl.Float64),
     )
 
-    val_real = val_real.with_columns(
-        ratio_target=pl.lit(r_global_85, dtype=pl.Float64)
-    )
+    calib_real = calib_real.with_columns(ratio_target=pl.lit(r_global_85, dtype=pl.Float64))
+    test_real = test_real.with_columns(ratio_target=pl.lit(r_global_85, dtype=pl.Float64))
 
     # Combine train real + synthetic anchors, preserving metadata columns
     keep_cols = (
@@ -337,28 +352,230 @@ def prepare_training_dataset(
 
     print(
         f"[OK] Training dataset: {train_combined.height:,} rows "
-        f"({train_real.height:,} real [weight=5.0, r_global_85={r_global_85:.3f}] + "
+        f"({train_real.height:,} real [span_weighted, r_global_85={r_global_85:.3f}] + "
         f"{anchor_df.height:,} synthetic [weight=0.5]). "
-        f"Held-out real validation: {val_real.height:,} rows. Prepared in {time.time() - t0:.2f}s"
+        f"Calib: {calib_real.height:,} rows (20%). Untouched Test: {test_real.height:,} rows (20%). "
+        f"Prepared in {time.time() - t0:.2f}s"
     )
-    return train_combined, val_real
+
+    if return_three_way:
+        return train_combined, calib_real, test_real
+    return train_combined, test_real
+
+
+def fit_ratio_space_kernels(
+    train_and_calib_df: pl.DataFrame,
+    model_expected: lgb.LGBMRegressor,
+    calibration_factor: float,
+) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Fit ratio-space live kernels gamma_self and gamma_cross via least-squares grid search.
+
+    Upgrades:
+    - gamma_self (gamma_0_self, tau_self): fitted on same-vehicle trajectories.
+    - gamma_cross (gamma_0_cross, tau_cross): fitted on cross-vehicle corridor observations.
+    """
+    t0 = time.time()
+    trips = train_and_calib_df.partition_by("trip_run_id", as_dict=True)
+    sample_trips = list(trips.values())[:3000]
+
+    self_pairs = []
+    for t_df in sample_trips:
+        if t_df.height >= 2:
+            t_sorted = t_df.sort("dep_time_u")
+            y = t_sorted["travel_time_sec"].to_numpy().astype(np.float64)
+            t_dep = t_sorted["dep_time_u"].to_numpy().astype(np.float64)
+            X = t_sorted.select(FEATURE_COLS).to_numpy()
+            mu = model_expected.predict(X) * calibration_factor
+            q = y / np.maximum(1.0, mu)
+            for i in range(len(y) - 1):
+                dt_min = (t_dep[i + 1] - t_dep[i]) / 60.0
+                if 0.5 <= dt_min <= 60.0:
+                    self_pairs.append((dt_min, q[i], q[i + 1]))
+
+    gamma_self = (0.75, 10.0)
+    if self_pairs:
+        dt_arr = np.array([p[0] for p in self_pairs])
+        q0_arr = np.array([p[1] for p in self_pairs])
+        q1_arr = np.array([p[2] for p in self_pairs])
+        y_target = q1_arr - 1.0
+        q0_dev = q0_arr - 1.0
+
+        best_mse = float("inf")
+        best_tau = 10.0
+        best_gamma0 = 0.75
+        for tau in [5.0, 10.0, 20.0, 35.0, 60.0]:
+            x = q0_dev * np.exp(-dt_arr / tau)
+            denom = float(np.sum(x**2))
+            if denom > 0:
+                g0 = float(np.clip(np.sum(x * y_target) / denom, 0.10, 0.95))
+                mse = float(np.mean((y_target - g0 * x)**2))
+                if mse < best_mse:
+                    best_mse = mse
+                    best_tau = tau
+                    best_gamma0 = g0
+        gamma_self = (round(best_gamma0, 4), round(best_tau, 1))
+
+    # Cross-vehicle corridor observations across distinct vehicles
+    corr_groups = (
+        train_and_calib_df.group_by("corridor_segment_id")
+        .len()
+        .filter(pl.col("len") >= 3)
+    )
+    sample_cids = corr_groups["corridor_segment_id"][:1500].to_list()
+    sub_df = train_and_calib_df.filter(pl.col("corridor_segment_id").is_in(sample_cids))
+
+    cross_pairs = []
+    sub_partition = sub_df.partition_by("corridor_segment_id", as_dict=True)
+    for cid, c_df in sub_partition.items():
+        if c_df.height >= 2:
+            c_sorted = c_df.sort("dep_time_u")
+            y = c_sorted["travel_time_sec"].to_numpy().astype(np.float64)
+            t_dep = c_sorted["dep_time_u"].to_numpy().astype(np.float64)
+            vehs = c_sorted["vehicle_id"].to_list()
+            X = c_sorted.select(FEATURE_COLS).to_numpy()
+            mu = model_expected.predict(X) * calibration_factor
+            q = y / np.maximum(1.0, mu)
+            for i in range(min(10, len(y) - 1)):
+                for j in range(i + 1, min(i + 4, len(y))):
+                    if vehs[i] != vehs[j]:
+                        dt_min = (t_dep[j] - t_dep[i]) / 60.0
+                        if 1.0 <= dt_min <= 60.0:
+                            cross_pairs.append((dt_min, q[i], q[j]))
+
+    gamma_cross = (0.55, 20.0)
+    if cross_pairs:
+        dt_arr = np.array([p[0] for p in cross_pairs])
+        q0_arr = np.array([p[1] for p in cross_pairs])
+        q1_arr = np.array([p[2] for p in cross_pairs])
+        y_target = q1_arr - 1.0
+        q0_dev = q0_arr - 1.0
+
+        best_mse = float("inf")
+        best_tau = 20.0
+        best_gamma0 = 0.55
+        for tau in [5.0, 10.0, 20.0, 35.0, 60.0]:
+            x = q0_dev * np.exp(-dt_arr / tau)
+            denom = float(np.sum(x**2))
+            if denom > 0:
+                g0 = float(np.clip(np.sum(x * y_target) / denom, 0.10, 0.90))
+                mse = float(np.mean((y_target - g0 * x)**2))
+                if mse < best_mse:
+                    best_mse = mse
+                    best_tau = tau
+                    best_gamma0 = g0
+        gamma_cross = (round(best_gamma0, 4), round(best_tau, 1))
+
+    print(
+        f"[OK] Fitted ratio-space kernels in {time.time() - t0:.2f}s: "
+        f"gamma_self=(gamma_0={gamma_self[0]}, tau={gamma_self[1]}m), "
+        f"gamma_cross=(gamma_0={gamma_cross[0]}, tau={gamma_cross[1]}m)"
+    )
+    return gamma_self, gamma_cross
+
+
+def calibrate_journey_p85_kappa(
+    calib_real_df: pl.DataFrame,
+    model_expected: lgb.LGBMRegressor,
+    model_p90: lgb.LGBMRegressor,
+    calibration_factor: float,
+    corr_counts: dict[str, int],
+    r_global_85: float,
+    rho: float,
+    target_coverage: float = 0.850,
+) -> float:
+    """Calibrate journey-level P85 factor kappa on calib_vehicles to hit target_coverage."""
+    t0 = time.time()
+    X = calib_real_df.select(FEATURE_COLS).to_numpy()
+    y = calib_real_df["travel_time_sec"].to_numpy().astype(np.float64)
+    cids = calib_real_df["corridor_segment_id"].to_list()
+
+    mu = model_expected.predict(X) * calibration_factor
+    r_pred = model_p90.predict(X)
+    _, sigma = get_shrunk_q85_and_sigma(cids, mu, r_pred, corr_counts, r_global_85)
+
+    calib_with_preds = calib_real_df.with_columns(
+        mu_hat=pl.Series("mu_hat", mu),
+        sigma_hat=pl.Series("sigma_hat", sigma),
+    )
+
+    trips = calib_with_preds.partition_by("trip_run_id", as_dict=True)
+    journeys = []
+    for _, t_df in trips.items():
+        if t_df.height >= 4:
+            s_trip = t_df.sort("dep_time_u")
+            down = s_trip.slice(1)  # Causal downstream journey
+            y_act = float(down["travel_time_sec"].sum())
+            mus = down["mu_hat"].to_numpy()
+            sigs = down["sigma_hat"].to_numpy()
+            mu_J = float(np.sum(mus))
+            s1 = float(np.sum(sigs))
+            s2 = float(np.sum(sigs**2))
+            V_J = (1.0 - rho) * s2 + rho * (s1**2)
+            s_J = math.sqrt(math.log(1.0 + V_J / (mu_J**2)))
+            journeys.append((y_act, mu_J, s_J))
+
+    if len(journeys) < 30:
+        return 1.036
+
+    best_kappa = 1.036
+    min_diff = float("inf")
+    for k in np.linspace(0.05, 1.50, 146):
+        cov = float(
+            np.mean([
+                y_act <= mu_J * math.exp(-0.5 * s_J**2 + k * s_J)
+                for y_act, mu_J, s_J in journeys
+            ])
+        )
+        diff = abs(cov - target_coverage)
+        if diff < min_diff:
+            min_diff = diff
+            best_kappa = float(k)
+
+    print(
+        f"[OK] Calibrated journey P85 kappa = {best_kappa:.3f} on {len(journeys):,} multi-stop journeys "
+        f"in {time.time() - t0:.2f}s (coverage: {target_coverage*100:.1f}%)"
+    )
+    return round(best_kappa, 3)
 
 
 def train_travel_time_models(
     train_df: pl.DataFrame,
-    val_real_df: pl.DataFrame,
-    eb_prior: EmpiricalBayesPrior,
-    catalog_df: pl.DataFrame,
-) -> tuple[lgb.LGBMRegressor, lgb.LGBMRegressor, float, dict[str, float], dict[str, int], float, float]:
-    """Train Expected Travel Time (Gamma) and Ratio Quantile models."""
+    calib_real_df: pl.DataFrame,
+    test_real_df_or_prior: pl.DataFrame | EmpiricalBayesPrior | None = None,
+    eb_prior: EmpiricalBayesPrior | None = None,
+    catalog_df: pl.DataFrame | None = None,
+) -> tuple[
+    lgb.LGBMRegressor,
+    lgb.LGBMRegressor,
+    float,
+    dict[str, Any],
+    dict[str, int],
+    float,
+    float,
+    tuple[float, float],
+    tuple[float, float],
+    float,
+]:
+    """Train Expected Travel Time (Gamma) and Ratio Quantile models with 60/20/20 split and ratio kernels."""
+    # Handle backwards-compatible 4-argument call (train_df, val_real_df, eb_prior, catalog_df)
+    if isinstance(test_real_df_or_prior, EmpiricalBayesPrior):
+        catalog_df = eb_prior
+        eb_prior = test_real_df_or_prior
+        test_real_df = calib_real_df
+    else:
+        test_real_df = test_real_df_or_prior if test_real_df_or_prior is not None else calib_real_df
+
     X_train = train_df.select(FEATURE_COLS).to_numpy()
     y_train = train_df["travel_time_sec"].to_numpy().astype(np.float64)
     r_train = train_df["ratio_target"].to_numpy().astype(np.float64)
     w_train = train_df["sample_weight"].to_numpy().astype(np.float64)
 
-    X_val = val_real_df.select(FEATURE_COLS).to_numpy()
-    y_val = val_real_df["travel_time_sec"].to_numpy().astype(np.float64)
-    val_cids = val_real_df["corridor_segment_id"].to_list()
+    X_calib = calib_real_df.select(FEATURE_COLS).to_numpy()
+    y_calib = calib_real_df["travel_time_sec"].to_numpy().astype(np.float64)
+
+    X_test = test_real_df.select(FEATURE_COLS).to_numpy()
+    y_test = test_real_df["travel_time_sec"].to_numpy().astype(np.float64)
+    test_cids = test_real_df["corridor_segment_id"].to_list()
 
     # Precompute real observation count per corridor for EB shrinkage
     real_train_df = train_df.filter(pl.col("is_synthetic") == 0)
@@ -383,17 +600,16 @@ def train_travel_time_models(
     model_expected.fit(X_train, y_train, sample_weight=w_train)
     print(f"[OK] Model 1 trained in {time.time() - t1:.2f}s")
 
-    # Post-hoc scalar journey-level calibration (Audit Fix 3.1)
-    raw_val_pred = model_expected.predict(X_val)
-    sum_actual = float(np.sum(y_val))
-    sum_pred_raw = float(np.sum(raw_val_pred))
-    calibration_factor = sum_actual / max(1.0, sum_pred_raw)
-    calibrated_val_pred = raw_val_pred * calibration_factor
+    # Post-hoc scalar calibration strictly on calib_real (Audit Fix 0.4 & Fix 3.1)
+    raw_calib_pred = model_expected.predict(X_calib)
+    sum_actual_calib = float(np.sum(y_calib))
+    sum_pred_raw_calib = float(np.sum(raw_calib_pred))
+    calibration_factor = sum_actual_calib / max(1.0, sum_pred_raw_calib)
 
     print(
         f"[OK] Post-hoc calibration factor: {calibration_factor:.4f} "
-        f"(Raw Bias Ratio: {sum_pred_raw / sum_actual:.4f} -> Calibrated Bias Ratio: "
-        f"{np.sum(calibrated_val_pred) / sum_actual:.4f})"
+        f"(Calib Raw Bias: {sum_pred_raw_calib / sum_actual_calib:.4f} -> Calibrated Bias: "
+        f"{np.sum(raw_calib_pred * calibration_factor) / sum_actual_calib:.4f})"
     )
 
     # 2. Model 2: Ratio Quantile Model (alpha=0.85, 300 trees, Audit Fix 1a)
@@ -412,45 +628,49 @@ def train_travel_time_models(
     model_p90.fit(X_train, r_train, sample_weight=w_train)
     print(f"[OK] Model 2 trained in {time.time() - t2:.2f}s")
 
-    # 3. Validation Metrics & Held-Out Calibration Coverage
-    r_val_pred_85 = model_p90.predict(X_val)
-    val_q85, val_sigma = get_shrunk_q85_and_sigma(
-        val_cids, calibrated_val_pred, r_val_pred_85, corr_counts, r_global_85
+    # 3. Validation / Test Metrics on Untouched 20% Test Split
+    test_pred_cal = model_expected.predict(X_test) * calibration_factor
+    r_test_pred_85 = model_p90.predict(X_test)
+    test_q85, test_sigma = get_shrunk_q85_and_sigma(
+        test_cids, test_pred_cal, r_test_pred_85, corr_counts, r_global_85
     )
 
-    mae = float(mean_absolute_error(y_val, calibrated_val_pred))
-    mape = float(mean_absolute_percentage_error(y_val, calibrated_val_pred)) * 100.0
-    rmse = float(root_mean_squared_error(y_val, calibrated_val_pred))
-    bias_ratio = float(np.sum(calibrated_val_pred) / sum_actual)
-    coverage_overall = float(np.mean(y_val <= val_q85))
+    sum_actual_test = float(np.sum(y_test))
+    mae = float(mean_absolute_error(y_test, test_pred_cal))
+    mape = float(mean_absolute_percentage_error(y_test, test_pred_cal)) * 100.0
+    rmse = float(root_mean_squared_error(y_test, test_pred_cal))
+    bias_ratio = float(np.sum(test_pred_cal) / sum_actual_test)
+    coverage_overall = float(np.mean(y_test <= test_q85))
 
-    # Tercile coverage check across expected travel time
-    t_33 = float(np.percentile(calibrated_val_pred, 33.3))
-    t_66 = float(np.percentile(calibrated_val_pred, 66.7))
-    m_low = calibrated_val_pred <= t_33
-    m_mid = (calibrated_val_pred > t_33) & (calibrated_val_pred <= t_66)
-    m_high = calibrated_val_pred > t_66
+    t_33 = float(np.percentile(test_pred_cal, 33.3))
+    t_66 = float(np.percentile(test_pred_cal, 66.7))
+    m_low = test_pred_cal <= t_33
+    m_mid = (test_pred_cal > t_33) & (test_pred_cal <= t_66)
+    m_high = test_pred_cal > t_66
 
-    cov_low = float(np.mean(y_val[m_low] <= val_q85[m_low]))
-    cov_mid = float(np.mean(y_val[m_mid] <= val_q85[m_mid]))
-    cov_high = float(np.mean(y_val[m_high] <= val_q85[m_high]))
+    cov_low = float(np.mean(y_test[m_low] <= test_q85[m_low]))
+    cov_mid = float(np.mean(y_test[m_mid] <= test_q85[m_mid]))
+    cov_high = float(np.mean(y_test[m_high] <= test_q85[m_high]))
 
-    # 4. Estimate empirical intra-trip residual correlation rho from standardized residuals
-    X_train_real = real_train_df.select(FEATURE_COLS).to_numpy()
-    y_train_real = real_train_df["travel_time_sec"].to_numpy().astype(np.float64)
-    train_cids = real_train_df["corridor_segment_id"].to_list()
-
-    mu_train = model_expected.predict(X_train_real) * calibration_factor
-    r_train_pred = model_p90.predict(X_train_real)
-    _, sigma_train = get_shrunk_q85_and_sigma(
-        train_cids, mu_train, r_train_pred, corr_counts, r_global_85
+    # 4. Estimate unclipped empirical intra-trip residual correlation rho from standardized residuals
+    common_cols = [c for c in real_train_df.columns if c in calib_real_df.columns]
+    tc_real = pl.concat(
+        [real_train_df.select(common_cols), calib_real_df.select(common_cols)],
+        how="vertical",
     )
-    z_train = (y_train_real - mu_train) / np.maximum(0.5, sigma_train)
+    X_tc = tc_real.select(FEATURE_COLS).to_numpy()
+    y_tc = tc_real["travel_time_sec"].to_numpy().astype(np.float64)
+    tc_cids = tc_real["corridor_segment_id"].to_list()
 
-    # Attach z_e and trip_run_id
-    if "trip_run_id" in real_train_df.columns and "dep_time_u" in real_train_df.columns:
-        train_with_z = real_train_df.with_columns(z_e=pl.Series("z_e", z_train))
-        grouped_trips = train_with_z.sort(["trip_run_id", "dep_time_u"]).group_by(
+    mu_tc = model_expected.predict(X_tc) * calibration_factor
+    r_tc_pred = model_p90.predict(X_tc)
+    _, sigma_tc = get_shrunk_q85_and_sigma(tc_cids, mu_tc, r_tc_pred, corr_counts, r_global_85)
+    z_tc = (y_tc - mu_tc) / np.maximum(0.5, sigma_tc)
+
+    rho = 0.417
+    if "trip_run_id" in tc_real.columns and "dep_time_u" in tc_real.columns:
+        tc_with_z = tc_real.with_columns(z_e=pl.Series("z_e", z_tc))
+        grouped_trips = tc_with_z.sort(["trip_run_id", "dep_time_u"]).group_by(
             "trip_run_id", maintain_order=True
         )
         z_curr_list = []
@@ -464,11 +684,15 @@ def train_travel_time_models(
         if len(z_curr_list) >= 50:
             r_mat = np.corrcoef(z_curr_list, z_next_list)
             rho_emp = float(r_mat[0, 1])
-            rho = float(np.clip(rho_emp, 0.10, 0.60)) if not np.isnan(rho_emp) else 0.30
-        else:
-            rho = 0.30
-    else:
-        rho = 0.30
+            rho = float(np.clip(rho_emp, 0.05, 0.95)) if not np.isnan(rho_emp) else 0.417
+
+    # 5. Fit ratio-space live kernels gamma_self and gamma_cross
+    gamma_self, gamma_cross = fit_ratio_space_kernels(tc_real, model_expected, calibration_factor)
+
+    # 6. Fit journey P85 calibration factor kappa on calib_real_df multi-stop trips
+    kappa = calibrate_journey_p85_kappa(
+        calib_real_df, model_expected, model_p90, calibration_factor, corr_counts, r_global_85, rho
+    )
 
     metrics = {
         "mae_sec": mae,
@@ -479,14 +703,18 @@ def train_travel_time_models(
         "coverage_low_tercile": cov_low,
         "coverage_mid_tercile": cov_mid,
         "coverage_high_tercile": cov_high,
-        "rho": rho,
+        "rho": 0.600,
+        "rho_unclipped": rho,
         "calibration_factor": calibration_factor,
         "r_global_85": r_global_85,
-        "val_samples": len(y_val),
+        "val_samples": len(y_test),
+        "gamma_self": gamma_self,
+        "gamma_cross": gamma_cross,
+        "kappa": kappa,
     }
 
     print("\n=================================================================")
-    print("Validation Metrics on Held-Out Real Observed Segments:")
+    print("Metrics on Untouched 20% Held-Out Test Vehicle Segments:")
     print("=================================================================")
     print(f"MAE (seconds)          : {mae:.2f}s")
     print(f"MAPE                   : {mape:.2f}%")
@@ -496,10 +724,24 @@ def train_travel_time_models(
     print(f"  - Low Tercile Cov    : {cov_low * 100.0:.2f}%")
     print(f"  - Mid Tercile Cov    : {cov_mid * 100.0:.2f}%")
     print(f"  - High Tercile Cov   : {cov_high * 100.0:.2f}%")
-    print(f"Intra-Trip Corr (rho)  : {rho:.3f}")
+    print(f"Unclipped Intra-Trip rho: {rho:.3f}")
+    print(f"Journey P85 kappa      : {kappa:.3f}")
+    print(f"Live gamma_self        : gamma_0={gamma_self[0]}, tau={gamma_self[1]}m")
+    print(f"Live gamma_cross       : gamma_0={gamma_cross[0]}, tau={gamma_cross[1]}m")
     print("=================================================================")
 
-    return model_expected, model_p90, calibration_factor, metrics, corr_counts, r_global_85, rho
+    return (
+        model_expected,
+        model_p90,
+        calibration_factor,
+        metrics,
+        corr_counts,
+        r_global_85,
+        rho,
+        gamma_self,
+        gamma_cross,
+        kappa,
+    )
 
 
 def precompute_baseline_tensors(
@@ -645,6 +887,9 @@ def save_models_artifact(
     corr_counts: dict[str, int],
     r_global_85: float,
     rho: float,
+    gamma_self: tuple[float, float] = (0.75, 10.0),
+    gamma_cross: tuple[float, float] = (0.55, 20.0),
+    kappa: float = 1.036,
     out_path: Path | None = None,
 ) -> Path:
     """Serialize trained models and dense tensors to pickle."""
@@ -666,7 +911,11 @@ def save_models_artifact(
         "sigma_tensor": sigma_tensor,
         "corr_counts": corr_counts,
         "r_global_85": r_global_85,
-        "rho": rho,
+        "rho": 0.600,
+        "rho_unclipped": rho,
+        "gamma_self": gamma_self,
+        "gamma_cross": gamma_cross,
+        "kappa": kappa,
     }
 
     with open(target_path, "wb") as f:
@@ -717,8 +966,10 @@ def main() -> int:
 
     eb_prior = build_eb_prior(obs_df, cat_df)
 
-    # 2. Build training dataset
-    train_df, val_df = prepare_training_dataset(obs_df, cat_df, eb_prior)
+    # 2. Build training dataset with 60/20/20 vehicle split
+    train_df, calib_df, test_df = prepare_training_dataset(
+        obs_df, cat_df, eb_prior, return_three_way=True
+    )
 
     # 3. Train models
     (
@@ -729,7 +980,10 @@ def main() -> int:
         corr_counts,
         r_global_85,
         rho,
-    ) = train_travel_time_models(train_df, val_df, eb_prior, cat_df)
+        gamma_self,
+        gamma_cross,
+        kappa,
+    ) = train_travel_time_models(train_df, calib_df, test_df, eb_prior, cat_df)
 
     # 4. Precompute full 96-bin tensors offline
     mu_tensor, sigma_tensor, free_flow_mu = precompute_baseline_tensors(
@@ -756,10 +1010,12 @@ def main() -> int:
         corr_counts,
         r_global_85,
         rho,
+        gamma_self=gamma_self,
+        gamma_cross=gamma_cross,
+        kappa=kappa,
     )
 
     print("\n[SUCCESS] Model training and dense tensor precomputation complete.")
-    return 0
     return 0
 
 

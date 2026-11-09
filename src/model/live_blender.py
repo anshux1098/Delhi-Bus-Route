@@ -80,6 +80,7 @@ class LiveObservation:
     live_time_obs: float      # segment_length_m * live_pace
     m_hist_obs: float         # Historical model expectation at t_obs
     r_live: float             # log(t_live_obs) - log(m_hist_obs)
+    q_obs: float = 1.0        # t_live_obs / m_hist_obs (mean-unbiased ratio)
 
 
 class LiveStateTracker:
@@ -96,6 +97,11 @@ class LiveStateTracker:
         self.sigma_tensor = self.artifacts.get("sigma_tensor")
         cids = self.catalog_df["corridor_segment_id"].to_list()
         self.corridor_to_idx = {cid: i for i, cid in enumerate(cids)}
+
+        # Fitted ratio-space live kernels (Upgrade 2b/2c)
+        self.gamma_self = self.artifacts.get("gamma_self", (0.75, 10.0))
+        self.gamma_cross = self.artifacts.get("gamma_cross", (0.55, 20.0))
+        self.kappa = float(self.artifacts.get("kappa", 1.036))
 
         self.observations: dict[str, LiveObservation] = {}
 
@@ -137,6 +143,7 @@ class LiveStateTracker:
         live_pace = float(t_live_obs / max(1.0, length_m))
         median_log_p = float(np.log(max(1e-6, live_pace)))
         r_live = float(np.clip(np.log(max(1.0, t_live_obs)) - np.log(m_hist_obs), -1.2, 1.5))
+        q_obs = float(max(0.1, t_live_obs / m_hist_obs))
 
         obs = LiveObservation(
             corridor_segment_id=cid,
@@ -147,6 +154,7 @@ class LiveStateTracker:
             live_time_obs=float(t_live_obs),
             m_hist_obs=m_hist_obs,
             r_live=r_live,
+            q_obs=q_obs,
         )
         self.observations[cid] = obs
         return obs
@@ -192,7 +200,7 @@ class LiveStateTracker:
             length_m = float(row["segment_length_m"])
             paces = np.array(row["paces"], dtype=np.float64)
 
-            # Audit Fix 3.7: Median of log-pace, never arithmetic speed
+            # Median of log-pace, never arithmetic speed
             log_paces = np.log(np.clip(paces, MIN_REALISTIC_PACE_S_PER_M, MAX_REALISTIC_PACE_S_PER_M))
             median_log_p = float(np.median(log_paces))
             live_pace = float(np.exp(median_log_p))
@@ -203,6 +211,7 @@ class LiveStateTracker:
 
             # Log-residual anomaly
             r_live = float(np.clip(np.log(t_live_obs) - np.log(m_hist_obs), -1.2, 1.5))
+            q_obs = float(max(0.1, t_live_obs / m_hist_obs))
 
             self.observations[cid] = LiveObservation(
                 corridor_segment_id=cid,
@@ -213,6 +222,7 @@ class LiveStateTracker:
                 live_time_obs=t_live_obs,
                 m_hist_obs=m_hist_obs,
                 r_live=r_live,
+                q_obs=q_obs,
             )
             updated_count += 1
 
@@ -223,8 +233,12 @@ class LiveStateTracker:
         corridor_segment_id: str,
         arrival_epoch: float,
         m_hist_ta: float | None = None,
+        blend_mode: str = "log_anomaly",
     ) -> float:
-        """Blend historical travel time with live anomaly decay (Audit Fixes 3.6 & 4.5)."""
+        """Blend historical travel time with live anomaly decay.
+
+        Supports both log_anomaly (default) and mean-unbiased ratio space (blend_mode='ratio').
+        """
         cid = str(corridor_segment_id)
         if m_hist_ta is None:
             m_hist_ta = self.get_historical_baseline(cid, arrival_epoch)
@@ -234,9 +248,43 @@ class LiveStateTracker:
             return float(m_hist_ta)
 
         delta_t_mins = max(0.0, (arrival_epoch - obs.t_obs) / 60.0)
-        alpha = (obs.n_veh / (obs.n_veh + LIVE_K)) * np.exp(-delta_t_mins / LIVE_TAU_MINS)
-        t_hat = m_hist_ta * np.exp(alpha * obs.r_live)
+        if blend_mode == "ratio":
+            gamma_0_cross, tau_cross = self.gamma_cross
+            w = obs.n_veh / (obs.n_veh + LIVE_K)
+            alpha = w * gamma_0_cross * np.exp(-delta_t_mins / tau_cross)
+            t_hat = m_hist_ta * max(0.2, 1.0 + alpha * (obs.q_obs - 1.0))
+            return float(max(1.0, t_hat))
+        else:
+            alpha = (obs.n_veh / (obs.n_veh + LIVE_K)) * np.exp(-delta_t_mins / LIVE_TAU_MINS)
+            t_hat = m_hist_ta * np.exp(alpha * obs.r_live)
+            return float(max(1.0, t_hat))
+
+    def get_tracked_vehicle_blended_time(
+        self,
+        corridor_segment_id: str,
+        arrival_epoch: float,
+        q_upstream: float,
+        t_obs_upstream: float,
+        m_hist_ta: float | None = None,
+    ) -> float:
+        """Tracked live vehicle ETA blend using fitted gamma_self kernel (Upgrade 2c)."""
+        cid = str(corridor_segment_id)
+        if m_hist_ta is None:
+            m_hist_ta = self.get_historical_baseline(cid, arrival_epoch)
+        gamma_0_self, tau_self = self.gamma_self
+        delta_t_mins = max(0.0, (arrival_epoch - t_obs_upstream) / 60.0)
+        alpha = gamma_0_self * np.exp(-delta_t_mins / tau_self)
+        t_hat = m_hist_ta * max(0.2, 1.0 + alpha * (q_upstream - 1.0))
         return float(max(1.0, t_hat))
+
+    def get_ratio_blended_time(
+        self,
+        corridor_segment_id: str,
+        arrival_epoch: float,
+        m_hist_ta: float | None = None,
+    ) -> float:
+        """Mean-unbiased ratio space blended travel time."""
+        return self.get_blended_time(corridor_segment_id, arrival_epoch, m_hist_ta=m_hist_ta, blend_mode="ratio")
 
 
 class PrecomputedHorizonTable(dict):
