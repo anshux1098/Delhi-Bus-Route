@@ -222,6 +222,11 @@
 
       <!-- Map Overlay Controls -->
       <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2">
+        <!-- Toggle Provenance-Aware Traffic Corridor Heatmap -->
+        <button id="toggleTrafficCorridorsBtn" onclick="toggleTrafficCorridorsLayer()" class="px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 shadow-xl flex items-center space-x-2 transition">
+          <span id="trafficCorridorDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+          <span>Traffic Sensor Layer</span>
+        </button>
         <!-- Toggle Live Buses Layer -->
         <button id="toggleLiveBusesBtn" onclick="toggleLiveBusesLayer()" class="px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur border border-slate-700 rounded-lg text-xs font-semibold text-slate-200 shadow-xl flex items-center space-x-2 transition">
           <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
@@ -235,6 +240,46 @@
           </svg>
           <span id="pickModeText">Click Map to Set</span>
         </button>
+      </div>
+
+      <!-- Provenance-Aware Traffic Sensor Legend Panel -->
+      <div id="trafficLegendPanel" class="hidden absolute top-4 left-4 z-10 bg-slate-900/95 backdrop-blur border border-slate-700 p-3 rounded-xl text-xs text-slate-200 shadow-2xl max-w-xs space-y-2.5">
+        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
+          <span class="font-bold text-amber-400 flex items-center space-x-1.5">
+            <span>📡 Traffic Sensor Layer</span>
+          </span>
+          <span id="trafficTimeLabel" class="text-[10px] text-slate-400 font-mono">08:30 IST</span>
+        </div>
+        <!-- Provenance Counts -->
+        <div class="space-y-1 text-[11px] font-mono">
+          <div class="flex items-center justify-between">
+            <span class="flex items-center space-x-1.5 text-emerald-300 font-semibold">
+              <span class="w-3.5 h-1 bg-emerald-400 rounded"></span>
+              <span>LIVE (&lt;45m)</span>
+            </span>
+            <span id="provenanceLiveCount" class="font-bold text-slate-100">0</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center space-x-1.5 text-amber-300">
+              <span class="w-3.5 h-1 bg-amber-400/70 rounded"></span>
+              <span>OBSERVED_HIST (&plusmn;1h)</span>
+            </span>
+            <span id="provenanceHistCount" class="font-bold text-slate-100">0</span>
+          </div>
+          <div class="flex items-center justify-between">
+            <span class="flex items-center space-x-1.5 text-slate-400">
+              <span class="w-3.5 h-0.5 border-b border-dashed border-slate-500"></span>
+              <span>PRIOR (Extrapolation)</span>
+            </span>
+            <span id="provenancePriorCount" class="font-bold text-slate-100">0</span>
+          </div>
+        </div>
+        <!-- Congestion Color Gradient -->
+        <div class="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+          <span class="text-emerald-400">&lt;1.15x Free</span>
+          <span class="text-amber-400">1.15-1.4x Delay</span>
+          <span class="text-rose-400">&gt;1.4x Jam</span>
+        </div>
       </div>
 
       <!-- Live Legend Pill on Map Bottom -->
@@ -549,6 +594,15 @@
              <span>⚡ Common Lines</span>
            </span>` : '';
 
+        const profileBadge = opt.profile_label ? `
+          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${
+            opt.profile_label.includes('Reliable') ? 'bg-indigo-950/90 text-indigo-300 border border-indigo-700/80' :
+            opt.profile_label.includes('Walking') ? 'bg-teal-950/90 text-teal-300 border border-teal-700/80' :
+            'bg-emerald-950/90 text-emerald-300 border border-emerald-700/80'
+          } flex items-center space-x-1">
+            <span>${opt.profile_label.includes('Reliable') ? '🛡️' : opt.profile_label.includes('Walking') ? '🚶' : '⚡'} ${opt.profile_label}</span>
+          </span>` : '';
+
         return `
           <div onclick="selectOption(${i})" class="journey-card cursor-pointer p-3.5 rounded-xl border transition-all ${
             isSelected ? 'bg-slate-800/90 border-cyan-500 ring-2 ring-cyan-500/20 shadow-xl' : 'bg-slate-950/60 hover:bg-slate-800/50 border-slate-800'
@@ -562,6 +616,7 @@
                   <span class="text-xs font-mono font-bold text-emerald-400">${opt.total_duration_mins.toFixed(0)}m</span>
                 </div>
                 <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                  ${profileBadge}
                   ${xferBadge}
                   ${clBadge}
                 </div>
@@ -755,6 +810,116 @@
 
       } catch (e) {
         console.warn("Could not fetch live vehicles:", e);
+      }
+    }
+
+    let trafficCorridorsVisible = false;
+
+    async function toggleTrafficCorridorsLayer() {
+      trafficCorridorsVisible = !trafficCorridorsVisible;
+      const btn = document.getElementById('toggleTrafficCorridorsBtn');
+      const dot = document.getElementById('trafficCorridorDot');
+      const panel = document.getElementById('trafficLegendPanel');
+
+      if (!trafficCorridorsVisible) {
+        dot.className = 'w-2 h-2 rounded-full bg-slate-500';
+        btn.classList.remove('border-amber-500', 'text-amber-400');
+        panel.classList.add('hidden');
+        if (map.getLayer('traffic-corridors-lines')) {
+          map.setLayoutProperty('traffic-corridors-lines', 'visibility', 'none');
+        }
+        return;
+      }
+
+      dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
+      btn.classList.add('border-amber-500', 'text-amber-400');
+      panel.classList.remove('hidden');
+
+      const depart = document.getElementById('customTimeInput').value.trim() || 'now';
+      try {
+        const res = await fetch(`/live/traffic-corridors?depart=${encodeURIComponent(depart)}`);
+        if (!res.ok) throw new Error('Failed to fetch traffic corridors');
+        const data = await res.json();
+
+        // Update counts
+        document.getElementById('provenanceLiveCount').innerText = data.summary.live_count.toLocaleString();
+        document.getElementById('provenanceHistCount').innerText = data.summary.observed_hist_count.toLocaleString();
+        document.getElementById('provenancePriorCount').innerText = data.summary.prior_count.toLocaleString();
+        document.getElementById('trafficTimeLabel').innerText = (data.summary.depart_ist || depart).slice(-12);
+
+        // Add or update MapLibre GeoJSON source & layer
+        if (!map.getSource('traffic-corridors-source')) {
+          map.addSource('traffic-corridors-source', {
+            type: 'geojson',
+            data: data
+          });
+
+          map.addLayer({
+            id: 'traffic-corridors-lines',
+            type: 'line',
+            source: 'traffic-corridors-source',
+            layout: {
+              'line-join': 'round',
+              'line-cap': 'round',
+              'visibility': 'visible'
+            },
+            paint: {
+              'line-color': [
+                'step',
+                ['get', 'ratio'],
+                '#10b981', // green < 1.15
+                1.15, '#f59e0b', // amber 1.15-1.40
+                1.40, '#ef4444'  // red > 1.40
+              ],
+              'line-width': [
+                'match',
+                ['get', 'provenance'],
+                'LIVE', 3.5,
+                'OBSERVED_HIST', 2.5,
+                /* PRIOR */ 1.8
+              ],
+              'line-opacity': [
+                'match',
+                ['get', 'provenance'],
+                'LIVE', 0.95,
+                'OBSERVED_HIST', 0.65,
+                /* PRIOR */ 0.35
+              ]
+            }
+          });
+
+          // Add click popup for corridor inspection
+          map.on('click', 'traffic-corridors-lines', (e) => {
+            if (!e.features || e.features.length === 0) return;
+            const props = e.features[0].properties;
+            const popupHtml = `
+              <div class="text-xs p-1 text-slate-900 font-sans">
+                <div class="font-bold text-slate-900 font-mono">${props.corridor_id}</div>
+                <div class="text-[11px] font-semibold ${props.ratio >= 1.4 ? 'text-rose-600' : props.ratio >= 1.15 ? 'text-amber-600' : 'text-emerald-600'}">
+                  Congestion Ratio: ${props.ratio}x
+                </div>
+                <div class="text-[10px] text-slate-600">Provenance: <span class="font-bold">${props.provenance}</span></div>
+                <div class="text-[10px] text-slate-500 font-mono">Time: ${props.t_hat_sec}s (Free-flow: ${props.free_flow_sec}s)</div>
+              </div>
+            `;
+            new maplibregl.Popup({ offset: 5 })
+              .setLngLat(e.lngLat)
+              .setHTML(popupHtml)
+              .addTo(map);
+          });
+
+          map.on('mouseenter', 'traffic-corridors-lines', () => {
+            map.getCanvas().style.cursor = 'pointer';
+          });
+          map.on('mouseleave', 'traffic-corridors-lines', () => {
+            map.getCanvas().style.cursor = '';
+          });
+        } else {
+          map.getSource('traffic-corridors-source').setData(data);
+          map.setLayoutProperty('traffic-corridors-lines', 'visibility', 'visible');
+        }
+      } catch (e) {
+        console.error("Traffic corridors load error:", e);
       }
     }
 

@@ -343,3 +343,81 @@ def test_4_ui_dashboard_and_supporting_endpoints(client: TestClient) -> None:
     assert r_health.json()["status"] == "healthy"
     assert r_health.json()["n_stops"] == 6812
     assert r_health.json()["n_routes"] == 2554
+
+
+# ==============================================================================
+# Check 6: Upgrade 4a & 4b Contract Verification
+# ==============================================================================
+
+
+def test_5_upgrade_4a_profile_label_in_journeys(client: TestClient) -> None:
+    """Verify options in GET /journeys carry profile_label badges from 3-profile reliability routing."""
+    res = client.get(
+        "/journeys",
+        params={
+            "from": "ISBT Kashmere Gate",
+            "to": "Nehru Place Terminal",
+            "depart": "08:30",
+        },
+    )
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data["options"]) >= 1
+
+    valid_labels = {
+        "Fastest",
+        "Most Reliable (Low P85)",
+        "Least Walking / Direct",
+        "Fastest & Direct",
+        "Fastest & Reliable",
+        "Alternative Route",
+    }
+    for opt in data["options"]:
+        assert "profile_label" in opt
+        assert isinstance(opt["profile_label"], str)
+        assert opt["profile_label"] in valid_labels, f"Unexpected profile label: {opt['profile_label']}"
+
+
+def test_6_upgrade_4b_live_traffic_corridors_endpoint(client: TestClient) -> None:
+    """Verify GET /live/traffic-corridors returns valid GeoJSON with strict data provenance."""
+    # Test departure during peak hours
+    res = client.get("/live/traffic-corridors", params={"depart": "2026-11-10T08:30:00+05:30"})
+    assert res.status_code == 200
+    data = res.json()
+
+    assert data["type"] == "FeatureCollection"
+    assert "summary" in data
+    summary = data["summary"]
+    assert "total_corridors" in summary
+    assert summary["total_corridors"] == 15130
+    assert summary["live_count"] >= 0
+    assert summary["observed_hist_count"] >= 0
+    assert summary["prior_count"] >= 0
+    assert summary["live_count"] + summary["observed_hist_count"] + summary["prior_count"] == 15130
+
+    features = data["features"]
+    assert len(features) == 15130
+
+    # Sample check a few features
+    sample_feat = features[0]
+    assert sample_feat["type"] == "Feature"
+    props = sample_feat["properties"]
+    assert "corridor_id" in props
+    assert "ratio" in props
+    assert props["provenance"] in {"LIVE", "OBSERVED_HIST", "PRIOR"}
+    assert props["ratio"] > 0.0
+
+    geom = sample_feat["geometry"]
+    assert geom["type"] == "LineString"
+    assert len(geom["coordinates"]) >= 2
+    for lon, lat in geom["coordinates"]:
+        assert 76.5 <= lon <= 77.8
+        assert 28.0 <= lat <= 29.2
+
+    # Verify UI contains traffic layer controls
+    r_ui = client.get("/")
+    assert r_ui.status_code == 200
+    html = r_ui.text
+    assert "toggleTrafficCorridorsLayer" in html
+    assert "traffic-corridors" in html
+    assert "Traffic Sensor Layer" in html

@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import json
 import time
 from contextlib import asynccontextmanager
 from datetime import datetime, timedelta, timezone
@@ -34,7 +35,8 @@ from src.api.geometry import extract_leg_geojson_coords
 from src.api.schemas import JourneyOptionSchema, JourneyResponseSchema, LegSchema
 from src.ingestion.hygiene import find_project_root
 from src.matching.shape_indexer import load_static_index
-from src.model.live_blender import LiveStateTracker
+from src.model.historical_baseline import epoch_to_ist_features
+from src.model.live_blender import LiveStateTracker, build_precomputed_horizon_table
 from src.router.raptor import CommonLinesRaptor, TransitLeg, WalkLeg
 from src.router.transit_graph import TransitGraph, load_transit_graph
 from src.router.wait_estimator import LiveVehicleIndex, build_live_vehicle_index
@@ -207,6 +209,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
             }
         )
 
+    # Load simplified corridor geometries for traffic heatmap
+    corridors_simplified_path = PROJECT_ROOT / "data" / "processed" / "corridors_simplified.json"
+    corridors_simplified: dict[str, Any] = {}
+    if corridors_simplified_path.exists():
+        try:
+            with open(corridors_simplified_path, "r", encoding="utf-8") as f:
+                corridors_simplified = json.load(f)
+            print(f"[STARTUP] Loaded {len(corridors_simplified):,} simplified corridor geometries")
+        except Exception as e:
+            print(f"[WARN] Failed to load corridors_simplified.json: {e}")
+
     # Attach to app.state
     app.state.static_index = static_index
     app.state.transit_graph = transit_graph
@@ -214,6 +227,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.live_index = live_index
     app.state.raptor = raptor
     app.state.stop_search_index = stop_search_index
+    app.state.corridors_simplified = corridors_simplified
     app.state.startup_time = time.time()
 
     # Launch background live vehicle updater
@@ -429,6 +443,92 @@ async def get_live_buses(
         return []
 
 
+@app.get("/live/traffic-corridors")
+async def get_traffic_corridors(
+    depart: str = Query("now", description="Departure time ('now', 'HH:MM', epoch, or ISO-8601)"),
+    min_ratio: float = Query(0.0, ge=0.0, description="Optional minimum congestion ratio filter"),
+) -> dict[str, Any]:
+    """Return city-wide corridor traffic congestion heatmap with strict data provenance.
+
+    Provenances:
+    - LIVE: >= 1 real vehicle observed on corridor within 45 mins of query time.
+    - OBSERVED_HIST: historical GPS observations exist for this (corridor, is_weekend) within +-1 hour.
+    - PRIOR: diurnal prior extrapolation only.
+    """
+    tracker: LiveStateTracker = app.state.tracker
+    corrs: dict[str, Any] = getattr(app.state, "corridors_simplified", {})
+    t_dep = _parse_departure_param(depart)
+
+    ht = build_precomputed_horizon_table(tracker=tracker, query_epoch=int(t_dep))
+    feat = epoch_to_ist_features(t_dep)
+    b_idx = int(feat["bin_15m"])
+    we = int(feat["is_weekend"])
+    eb_table = tracker.eb_prior.eb_table
+
+    features = []
+    live_c = 0
+    hist_c = 0
+    prior_c = 0
+    ratios = []
+
+    for cid, idx in tracker.corridor_to_idx.items():
+        geom = corrs.get(cid)
+        if not geom:
+            continue
+        t_hat = ht.get_segment_time(idx, t_dep)
+        ff = float(ht.free_flow_times[idx])
+        ratio = float(t_hat / max(1.0, ff))
+        if ratio < min_ratio:
+            continue
+        ratios.append(ratio)
+
+        # Strict data provenance evaluation
+        if cid in tracker.observations and abs(t_dep - tracker.observations[cid].t_obs) <= 2700.0:
+            prov = "LIVE"
+            live_c += 1
+        elif any((cid, b, we) in eb_table for b in range(b_idx - 4, b_idx + 5)):
+            prov = "OBSERVED_HIST"
+            hist_c += 1
+        else:
+            prov = "PRIOR"
+            prior_c += 1
+
+        features.append(
+            {
+                "type": "Feature",
+                "geometry": {"type": "LineString", "coordinates": geom},
+                "properties": {
+                    "corridor_id": cid,
+                    "ratio": round(ratio, 2),
+                    "provenance": prov,
+                    "t_hat_sec": round(t_hat, 1),
+                    "free_flow_sec": round(ff, 1),
+                },
+            }
+        )
+
+    dep_dt = datetime.fromtimestamp(t_dep, tz=IST_TZ)
+    dep_str = dep_dt.strftime("%Y-%m-%d %H:%M:%S IST")
+
+    mean_r = float(np.mean(ratios)) if ratios else 1.0
+    p85_r = float(np.percentile(ratios, 85)) if ratios else 1.0
+
+    return {
+        "type": "FeatureCollection",
+        "summary": {
+            "depart_ist": dep_str,
+            "query_epoch": int(t_dep),
+            "total_corridors": len(features),
+            "live_count": live_c,
+            "observed_hist_count": hist_c,
+            "prior_count": prior_c,
+            "mean_ratio": round(mean_r, 3),
+            "p85_ratio": round(p85_r, 3),
+        },
+        "features": features,
+    }
+
+
 @app.get("/journeys", response_model=JourneyResponseSchema)
 async def plan_journey(
     from_param: str = Query(..., alias="from", description="Origin stop name, stop_id, or 'lat,lon'"),
@@ -605,6 +705,7 @@ async def plan_journey(
         option_schemas.append(
             JourneyOptionSchema(
                 option_id=idx,
+                profile_label=getattr(j_opt, "profile_label", "Fastest"),
                 summary=j_opt.summary_str(),
                 departure_time_ist=dep_str,
                 arrival_time_ist=arr_str,
