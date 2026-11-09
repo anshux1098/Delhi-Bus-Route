@@ -1,0 +1,18 @@
+# Environments & secrets
+.venv/
+venv/
+.env
+
+# Python & Numba compiled caches
+__pycache__/
+*.py[cod]
+*.nbc
+*.nbi
+.pytest_cache/
+
+# Duplicate directory
+delhi-transit-planner/
+
+# Large compiled binary caches
+data/processed/*.pkl
+data/processed/*.npz
