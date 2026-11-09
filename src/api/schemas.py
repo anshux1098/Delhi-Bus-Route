@@ -84,6 +84,10 @@ class JourneyOptionSchema(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     option_id: int = Field(..., ge=0, description="Zero-based option rank.")
+    profile_label: str = Field(
+        "Fastest",
+        description="Winning profile badge: 'Fastest', 'Most Reliable (Low P85)', or 'Least Walking / Direct'.",
+    )
     summary: str = Field(..., description="Short human-readable summary.")
     departure_time_ist: str = Field(..., description="Departure time in IST.")
     arrival_time_ist: str = Field(..., description="Expected arrival time in IST.")

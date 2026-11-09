@@ -106,6 +106,8 @@ def _raptor_scan_jit(
     footpath_penalty_sec: np.ndarray,
     cl_keys: np.ndarray,
     cl_wait_prior: np.ndarray,
+    transfer_penalty_sec: float = 0.0,
+    walk_multiplier: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, int]:
     """Execute Rounds k = 1..n_rounds of Time-Dependent Common-Lines RAPTOR in < 10ms.
 
@@ -167,6 +169,8 @@ def _raptor_scan_jit(
 
                     if optimistic_1 < prune_cutoff and (optimistic_1 < tau[k, st] or (k == 1 and dest_mask[st])):
                         arr_1 = optimistic_1 + ew_r
+                        if k >= 2 and transfer_penalty_sec > 0.0:
+                            arr_1 += transfer_penalty_sec
                         chosen_u = best_st
 
                         # Check Common-Lines wait reduction if optimistic bound can improve
@@ -176,6 +180,8 @@ def _raptor_scan_jit(
                             if cl_idx >= 0:
                                 cl_w = float(cl_wait_prior[cl_idx])
                                 cand_cl = optimistic_1 + cl_w
+                                if k >= 2 and transfer_penalty_sec > 0.0:
+                                    cand_cl += transfer_penalty_sec
                                 if cand_cl < arr_1:
                                     arr_1 = cand_cl
 
@@ -186,11 +192,15 @@ def _raptor_scan_jit(
                             optimistic_2 = t_prev_2 + mu_2
                             if optimistic_2 < arr_1:
                                 arr_2 = optimistic_2 + ew_r
+                                if k >= 2 and transfer_penalty_sec > 0.0:
+                                    arr_2 += transfer_penalty_sec
                                 key2 = (np.int64(latest_st) * np.int64(n_stops) + np.int64(st)) * 4 + bucket
                                 cl_idx2 = _bsearch_cl_jit(cl_keys, key2)
                                 if cl_idx2 >= 0:
                                     cl_w2 = float(cl_wait_prior[cl_idx2])
                                     cand_cl2 = optimistic_2 + cl_w2
+                                    if k >= 2 and transfer_penalty_sec > 0.0:
+                                        cand_cl2 += transfer_penalty_sec
                                     if cand_cl2 < arr_2:
                                         arr_2 = cand_cl2
                                 if arr_2 < arr_1:
@@ -247,7 +257,7 @@ def _raptor_scan_jit(
                 v = footpath_target_stops[edge]
                 if v == u:
                     continue
-                w_sec = float(footpath_walk_sec[edge] + footpath_penalty_sec[edge])
+                w_sec = float((footpath_walk_sec[edge] + footpath_penalty_sec[edge]) * walk_multiplier)
                 cand_arr = t_u + w_sec
                 if cand_arr < tau[k, v] and cand_arr < prune_cutoff:
                     tau[k, v] = cand_arr
@@ -330,6 +340,7 @@ class JourneyOption:
     p85_arrival_epoch: float
     p85_buffer_sec: float
     legs: list[WalkLeg | TransitLeg] = field(default_factory=list)
+    profile_label: str = "Fastest"
 
     @property
     def num_transfers(self) -> int:
@@ -343,8 +354,9 @@ class JourneyOption:
         del_m = self.traffic_delay_sec / 60.0
         ff_m = self.free_flow_duration_sec / 60.0
         xfer = self.num_transfers
+        prof = f"[{self.profile_label}] " if self.profile_label else ""
         return (
-            f"Expected: {dur_m:.1f} mins | P85 Buffer: +{buf_m:.1f} mins (P85 total: {p85_m:.1f} mins) | "
+            f"{prof}Expected: {dur_m:.1f} mins | P85 Buffer: +{buf_m:.1f} mins (P85 total: {p85_m:.1f} mins) | "
             f"Transfers: {xfer} | Congestion Delay: +{del_m:.1f} mins (Free-flow: {ff_m:.1f} mins)"
         )
 
@@ -373,6 +385,16 @@ class CommonLinesRaptor:
         # Stop KDTree for coordinate snapping
         self.stop_coords_xy = np.column_stack([self.graph.stop_x_m, self.graph.stop_y_m])
         self.kdtree = cKDTree(self.stop_coords_xy)
+
+        # Calibrated uncertainty parameters (Sprint 6 Upgrade 2b/4a)
+        artifacts = getattr(self.tracker, "artifacts", {}) or {}
+        self.kappa = 1.036
+        self.rho = float(artifacts.get("rho", 0.600))
+
+        # Precompute static Profile 2 reliability arrays once
+        var_w = np.maximum(100.0, ((0.5 * self.graph.EH_sec) ** 2) * (0.33 + self.graph.CV2))
+        self.EW_sec_rel = (self.graph.EW_sec + float(self.kappa) * np.sqrt(var_w)).astype(np.float64)
+        self.cl_wait_rel = (self.graph.cl_wait_prior * (1.0 + float(self.kappa))).astype(np.float64)
 
         # Lowercase stop names for substring matching
         self.stop_names_lower = [str(n).lower() for n in self.graph.stop_names]
@@ -414,6 +436,31 @@ class CommonLinesRaptor:
             self.graph.footpath_penalty_sec,
             self.graph.cl_keys,
             self.graph.cl_wait_prior,
+            0.0,
+            1.0,
+        )
+        tau_dummy[0, 0] = 1794193200.0
+        marked_dummy[0] = True
+        _raptor_scan_jit(
+            tau_dummy,
+            marked_dummy,
+            dest_dummy,
+            1,
+            self.n_stops,
+            self.n_routes,
+            1,
+            self.graph.route_stop_offsets,
+            self.graph.route_stops,
+            pref.Tcum,
+            self.graph.EW_sec,
+            self.graph.footpath_offsets,
+            self.graph.footpath_target_stops,
+            self.graph.footpath_walk_sec,
+            self.graph.footpath_penalty_sec,
+            self.graph.cl_keys,
+            self.graph.cl_wait_prior,
+            600.0,
+            1.5,
         )
 
     def _resolve_candidates(
@@ -680,9 +727,9 @@ class CommonLinesRaptor:
         mu_J = float(tot_walk + tot_wait + tot_ride)
         V_J = float(max(100.0, sum(l.wait_variance + l.ride_variance for l in legs if isinstance(l, TransitLeg))))
 
-        # Lognormal P85 arrival buffer (Ruling Q1b)
+        # Lognormal P85 arrival buffer (Ruling Q1b & Sprint 6 Upgrade 4a)
         s2 = math.log(1.0 + V_J / (mu_J**2))
-        q85_raw = mu_J * math.exp(-0.5 * s2 + 1.036 * math.sqrt(s2))
+        q85_raw = mu_J * math.exp(-0.5 * s2 + self.kappa * math.sqrt(s2))
         q85_J = max(mu_J * 1.03, q85_raw)
         p85_buf = q85_J - mu_J
 
@@ -796,7 +843,7 @@ class CommonLinesRaptor:
 
         # Initialize Round 0 arrival times
         n_rounds = max(1, min(3, int(max_transfers) + 1))
-        tau = np.full((n_rounds + 1, self.n_stops), np.inf, dtype=np.float64)
+        tau_init = np.full((n_rounds + 1, self.n_stops), np.inf, dtype=np.float64)
         marked_init = np.zeros(self.n_stops, dtype=np.bool_)
         dest_mask = np.zeros(self.n_stops, dtype=np.bool_)
 
@@ -805,13 +852,13 @@ class CommonLinesRaptor:
 
         for u, w_sec, _, _, _ in orig_cands:
             t_arr = t_dep + w_sec
-            if t_arr < tau[0, u]:
-                tau[0, u] = t_arr
+            if t_arr < tau_init[0, u]:
+                tau_init[0, u] = t_arr
                 marked_init[u] = True
 
         # Relax initial footpaths from primary origin stops
         for u, _, _, _, _ in orig_cands[:3]:
-            t_u = tau[0, u]
+            t_u = tau_init[0, u]
             s_fp = int(self.graph.footpath_offsets[u])
             e_fp = int(self.graph.footpath_offsets[u + 1])
             for edge in range(s_fp, e_fp):
@@ -819,90 +866,117 @@ class CommonLinesRaptor:
                 if v == u:
                     continue
                 w_sec = float(self.graph.footpath_walk_sec[edge])
-                if t_u + w_sec < tau[0, v]:
-                    tau[0, v] = t_u + w_sec
+                if t_u + w_sec < tau_init[0, v]:
+                    tau_init[0, v] = t_u + w_sec
                     marked_init[v] = True
 
-        # Run compiled Numba RAPTOR scan
-        b_u, b_r, w_u, w_e, direct_hits, n_direct = _raptor_scan_jit(
-            tau,
-            marked_init,
-            dest_mask,
-            n_rounds,
-            self.n_stops,
-            self.n_routes,
-            bucket,
-            self.graph.route_stop_offsets,
-            self.graph.route_stops,
-            prefix_arrays.Tcum,
-            self.graph.EW_sec,
-            self.graph.footpath_offsets,
-            self.graph.footpath_target_stops,
-            self.graph.footpath_walk_sec,
-            self.graph.footpath_penalty_sec,
-            self.graph.cl_keys,
-            self.graph.cl_wait_prior,
-        )
+        # Multi-Profile Cost Surrogates (Sprint 6 Upgrade 4a)
+        # Profile 1 ("Fastest Expected"): Tcum, EW_sec, cl_wait, xfer=0, walk=1.0
+        # Profile 2 ("Most Reliable (Low P85)"): Tcum + kappa*S1, EW_sec + kappa*sqrt(Var_W), xfer=0, walk=1.0
+        # Profile 3 ("Least Walking / Direct"): Tcum, EW_sec, cl_wait, xfer=600.0, walk=1.5
+        Tcum_rel = getattr(prefix_arrays, "_tcum_rel", None)
+        if Tcum_rel is None:
+            Tcum_rel = (prefix_arrays.Tcum + np.float32(self.kappa) * prefix_arrays.S1).astype(np.float32)
+            prefix_arrays._tcum_rel = Tcum_rel
 
-        # Collect candidate bus-leg specifications: (round_k, est_arr, [(u, v, r), ...])
-        cand_specs: list[tuple[int, float, list[tuple[int, int, int]]]] = []
+        profiles = [
+            ("Fastest", prefix_arrays.Tcum, self.graph.EW_sec, self.graph.cl_wait_prior, 0.0, 1.0),
+            ("Most Reliable (Low P85)", Tcum_rel, self.EW_sec_rel, self.cl_wait_rel, 0.0, 1.0),
+            ("Least Walking / Direct", prefix_arrays.Tcum, self.graph.EW_sec, self.graph.cl_wait_prior, 600.0, 1.5),
+        ]
 
-        # 1. Direct hits from Round 1
-        for h in range(n_direct):
-            r_idx = int(direct_hits[h, 0])
-            u_st = int(direct_hits[h, 1])
-            v_st = int(direct_hits[h, 2])
-            arr_t = float(direct_hits[h, 3])
-            egr_d = float(np.hypot(self.graph.stop_x_m[v_st] - dest_x, self.graph.stop_y_m[v_st] - dest_y))
-            egr_s = 0.0 if is_exact_dest else (egr_d * WALK_DETOUR_FACTOR) / WALK_SPEED_MPS
-            cand_specs.append((1, arr_t + egr_s, [(u_st, v_st, r_idx)]))
+        # Collect candidate bus-leg specifications across profiles (top 2 per profile)
+        cand_specs: list[tuple[int, float, list[tuple[int, int, int]], str]] = []
 
-        # 2. Backtrack best k-leg journeys from destination candidates for k = 1..n_rounds
-        for k in range(1, n_rounds + 1):
-            for dest_idx, egr_sec, _, _, _ in dest_cands:
-                if not np.isfinite(tau[k, dest_idx]):
-                    continue
-                curr = dest_idx
-                curr_k = k
-                spec: list[tuple[int, int, int]] = []
-                valid = True
-                while curr_k > 0:
-                    if w_u[curr_k, curr] >= 0:
-                        curr = int(w_u[curr_k, curr])
-                    u_board = int(b_u[curr_k, curr])
-                    r_used = int(b_r[curr_k, curr])
-                    if u_board < 0 or r_used < 0:
-                        valid = False
+        for prof_name, p_tcum, p_ew, p_cl, p_xfer, p_walk in profiles:
+            tau_p = tau_init.copy()
+            b_u, b_r, w_u, w_e, direct_hits, n_direct = _raptor_scan_jit(
+                tau_p,
+                marked_init,
+                dest_mask,
+                n_rounds,
+                self.n_stops,
+                self.n_routes,
+                bucket,
+                self.graph.route_stop_offsets,
+                self.graph.route_stops,
+                p_tcum,
+                p_ew,
+                self.graph.footpath_offsets,
+                self.graph.footpath_target_stops,
+                self.graph.footpath_walk_sec,
+                self.graph.footpath_penalty_sec,
+                self.graph.cl_keys,
+                p_cl,
+                p_xfer,
+                p_walk,
+            )
+
+            prof_specs: list[tuple[int, float, list[tuple[int, int, int]]]] = []
+
+            # Direct hits from Round 1
+            for h in range(n_direct):
+                r_idx = int(direct_hits[h, 0])
+                u_st = int(direct_hits[h, 1])
+                v_st = int(direct_hits[h, 2])
+                arr_t = float(direct_hits[h, 3])
+                egr_d = float(np.hypot(self.graph.stop_x_m[v_st] - dest_x, self.graph.stop_y_m[v_st] - dest_y))
+                egr_s = 0.0 if is_exact_dest else (egr_d * WALK_DETOUR_FACTOR) / WALK_SPEED_MPS
+                prof_specs.append((1, arr_t + egr_s, [(u_st, v_st, r_idx)]))
+
+            # Backtrack best k-leg journeys from destination candidates for k = 1..n_rounds
+            for k in range(1, n_rounds + 1):
+                for dest_idx, egr_sec, _, _, _ in dest_cands:
+                    if not np.isfinite(tau_p[k, dest_idx]):
+                        continue
+                    curr = dest_idx
+                    curr_k = k
+                    spec: list[tuple[int, int, int]] = []
+                    valid = True
+                    while curr_k > 0:
+                        if w_u[curr_k, curr] >= 0:
+                            curr = int(w_u[curr_k, curr])
+                        u_board = int(b_u[curr_k, curr])
+                        r_used = int(b_r[curr_k, curr])
+                        if u_board < 0 or r_used < 0:
+                            valid = False
+                            break
+                        spec.append((u_board, curr, r_used))
+                        curr = u_board
+                        curr_k -= 1
+                    if valid and len(spec) == k:
+                        spec.reverse()
+                        prof_specs.append((k, float(tau_p[k, dest_idx]) + egr_sec, spec))
+
+            # Keep top distinct itineraries for this profile
+            prof_specs.sort(key=lambda x: (x[0], x[1]))
+            seen_prof_itin = set()
+            for k_spec, cost_spec, s_spec in prof_specs:
+                it_key = (
+                    tuple(r for _, _, r in s_spec),
+                    tuple(u for u, _, _ in s_spec),
+                    tuple(v for _, v, _ in s_spec),
+                )
+                if it_key not in seen_prof_itin:
+                    seen_prof_itin.add(it_key)
+                    cand_specs.append((k_spec, cost_spec, s_spec, prof_name))
+                    if len(seen_prof_itin) >= 2:
                         break
-                    spec.append((u_board, curr, r_used))
-                    curr = u_board
-                    curr_k -= 1
-                if valid and len(spec) == k:
-                    spec.reverse()
-                    cand_specs.append((k, float(tau[k, dest_idx]) + egr_sec, spec))
 
-        # Sort candidates by estimated arrival time within each round, then reconstruct top distinct options
+        # Reconstruct and deduplicate options by exact (route_sequence, board_stops, alight_stops)
+        candidate_options: list[JourneyOption] = []
+        seen_itineraries: set[tuple] = set()
+
+        # Sort candidate specs by estimated arrival cost
         cand_specs.sort(key=lambda x: (x[0], x[1]))
 
-        journeys: list[JourneyOption] = []
-        seen_corridors: set[str] = set()
-        direct_count = 0
-
-        for k, _, spec in cand_specs:
-            if k == 1 and direct_count >= 2 and any(cs[0] >= 2 for cs in cand_specs):
-                continue
-
-            # Build corridor signature based on route/attractive-set labels
-            corridor_parts = []
-            for u_st, v_st, r_idx in spec:
-                cl = self.graph.lookup_common_lines(u_st, v_st, bucket)
-                if cl is not None and r_idx in cl["routes"]:
-                    c_key = "/".join(str(self.graph.route_short_names[cr]) for cr in cl["routes"][:3])
-                else:
-                    c_key = str(self.graph.route_short_names[r_idx])
-                corridor_parts.append(c_key)
-            sig = " -> ".join(corridor_parts)
-            if sig in seen_corridors:
+        for k, _, spec, prof_name in cand_specs:
+            itinerary_key = (
+                tuple(r for _, _, r in spec),
+                tuple(u for u, _, _ in spec),
+                tuple(v for _, v, _ in spec),
+            )
+            if itinerary_key in seen_itineraries:
                 continue
 
             j_opt = self._build_journey_from_bus_legs(
@@ -922,12 +996,50 @@ class CommonLinesRaptor:
                 live_index,
             )
             if j_opt is not None:
-                seen_corridors.add(sig)
-                journeys.append(j_opt)
-                if k == 1:
-                    direct_count += 1
-                if len(journeys) >= 3:
-                    break
+                seen_itineraries.add(itinerary_key)
+                candidate_options.append(j_opt)
+
+        if not candidate_options:
+            return []
+
+        # Find winning profile options:
+        # 1. Fastest Expected
+        best_fastest = min(candidate_options, key=lambda j: j.total_duration_sec)
+        best_fastest.profile_label = "Fastest"
+
+        # 2. Most Reliable (Lowest P85 arrival time among remaining)
+        rem_p85 = [j for j in candidate_options if j is not best_fastest]
+        best_reliable = min(rem_p85, key=lambda j: j.p85_duration_sec) if rem_p85 else None
+        if best_reliable is not None:
+            best_reliable.profile_label = "Most Reliable (Low P85)"
+
+        # 3. Least Walking / Direct (Lowest walking time + transfer penalty among remaining)
+        rem_walk = [j for j in candidate_options if j not in (best_fastest, best_reliable)]
+        best_walk = (
+            min(rem_walk, key=lambda j: (j.num_transfers, j.total_walk_sec, j.total_duration_sec))
+            if rem_walk
+            else None
+        )
+        if best_walk is not None:
+            best_walk.profile_label = "Least Walking / Direct"
+
+        # Assemble final ordered journey options (up to 3)
+        journeys: list[JourneyOption] = [best_fastest]
+        if best_reliable is not None:
+            journeys.append(best_reliable)
+        if best_walk is not None:
+            journeys.append(best_walk)
+
+        if len(journeys) == 1:
+            journeys[0].profile_label = "Fastest & Direct"
+        elif len(journeys) < 3:
+            # Fill with any remaining distinct candidate
+            for rem_j in candidate_options:
+                if rem_j not in journeys:
+                    rem_j.profile_label = "Alternative Route"
+                    journeys.append(rem_j)
+                    if len(journeys) >= 3:
+                        break
 
         journeys.sort(key=lambda j: (j.num_transfers, j.total_duration_sec))
         return journeys
