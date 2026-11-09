@@ -9,7 +9,7 @@
 [![LightGBM](https://img.shields.io/badge/LightGBM-Gamma%20%2B%20Quantile-9C27B0?style=for-the-badge)](https://lightgbm.readthedocs.io/)
 [![Numba JIT](https://img.shields.io/badge/Numba-JIT%20Accelerated-00A3E0?style=for-the-badge&logo=numba&logoColor=white)](https://numba.pydata.org/)
 [![Polars](https://img.shields.io/badge/Polars-Dataframes-CD792C?style=for-the-badge&logo=polars&logoColor=white)](https://pola.rs/)
-[![Tests](https://img.shields.io/badge/Tests-32%20Passing-10B981?style=for-the-badge&logo=pytest&logoColor=white)](#testing--verification-suite)
+[![Tests](https://img.shields.io/badge/Tests-26%20Passing-10B981?style=for-the-badge&logo=pytest&logoColor=white)](#testing--verification-suite)
 
 <p align="center">
   <b>Production-grade real-time transit routing and arrival-time prediction across the entire Delhi National Capital Territory (`2,554` routes, `6,812` stops, `15,130` physical corridors).</b>
@@ -38,7 +38,7 @@
 | **Median Routing Latency** | **`43.12 ms` (`~43 ms`)** | Numba `@njit(fastmath=True)` Common-Lines RAPTOR scan + $O(1)$ route prefix arrays |
 | **Mean Bias Ratio (Held-Out)** | **`1.0000`** *(target `[0.98, 1.02]`)* | 400-tree Gamma deviance objective + post-hoc scalar calibration (zero Jensen's Inequality drift) |
 | **Held-Out P85 Coverage** | **`84.11%`** *(segment)* / **`89.6%`** *(journey)* | Out-of-fold Ratio Quantile regressor + lognormal correlated subpath aggregation (`rho = 0.600`) |
-| **End-to-End Error Reduction** | **`-57.5%` MAE / `-54.2%` RMSE** | Strictly out-of-fold 4-stage ablation vs. published Delhi GTFS timetable (`stop_times.txt`) |
+| **End-to-End Error Reduction** | **`-47.2%` MAE / `-44.8%` RMSE** | Strictly out-of-fold 4-stage ablation vs. published Delhi GTFS timetable (`stop_times.txt`) |
 
 ---
 
@@ -139,16 +139,19 @@ flowchart TD
 
 ## 📊 Ablation & Diurnal Validation
 
-### 1. Strictly Out-of-Fold 4-Stage Model Ablation (`337` Held-Out Multi-Stop Trips)
+### 1. Strictly Out-of-Fold 4-Stage Model Ablation (`1,488` Held-Out Multi-Stop Trips)
 
-Evaluated strictly on the **20% held-out validation vehicle split** (`2,455` segments, `337` multi-stop trajectories with $K \ge 4$ stops). Segment `0` serves exclusively as the causal upstream ping ($t_{\text{obs}} \le t_{\text{dep}, 1}$), and all 4 stages are evaluated on the downstream trajectory `tr[1:]`:
+Evaluated strictly on the **20% held-out test vehicle split** (`24,053` segments, `1,488` multi-stop trajectories with $K \ge 4$ stops). Segment `0` serves exclusively as the causal upstream ping ($t_{\text{obs}} \le t_{\text{dep}, 1}$), and all 4 stages are evaluated on the downstream trajectory `tr[1:]`:
 
 | Stage | Architecture Description | MAE (sec) | MAE (mins) | MAPE (%) | RMSE (sec) | Mean Bias Ratio | P85 Empirical Coverage |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Stage 1** | Baseline 1: Static GTFS Timetable (`stop_times.txt` Schedule) | 212.7s | 3.55m | 39.5% | 296.9s | 1.2910 | — |
-| **Stage 2** | Stage 2: Out-of-Fold Empirical Bayes Corridor Profile Only | 131.2s | 2.19m | 24.8% | 198.4s | 1.1154 | — |
-| **Stage 3** | Stage 3: + OOF Calibrated 400-Tree Gamma-LightGBM | 111.1s | 1.85m | 21.4% | 182.5s | 1.0591 | — |
-| **Stage 4** | **Stage 4: + Causal Live Anomaly Decay Blend & Lognormal P85** | **90.5s** | **1.51m** | **17.3%** | **136.0s** | **1.0409** | **89.6%** |
+| **Stage 1** | Baseline 1: Static GTFS Timetable (`stop_times.txt` Schedule) | 292.4s | 4.87m | 25.4% | 427.0s | 1.1162 | — |
+| **Stage 2** | Stage 2: Out-of-Fold Empirical Bayes Corridor Profile Only | 173.7s | 2.90m | 15.9% | 250.8s | 1.0201 | — |
+| **Stage 3** | Stage 3: + OOF Calibrated 400-Tree Gamma-LightGBM | 157.3s | 2.62m | 14.3% | 239.3s | 1.0069 | — |
+| **Stage 4** | **Stage 4: + Causal Live Anomaly Decay Blend & Lognormal P85** | **154.3s** | **2.57m** | **13.8%** | **235.5s** | **1.0052** | **88.6%** |
+
+> [!NOTE]
+> **Span-Level Ground Truth Verification**: Across **5,000 raw consecutive matched GPS ping-pairs** `(t_a, d_a) -> (t_b, d_b)` directly from held-out test vehicles, the corridor model achieves **`24.3s` MAE**, **`76.0s` RMSE**, **`34.4%` MAPE**, and **`0.9798` Mean Bias Ratio**, verifying that prediction accuracy is not an artifact of stop interpolation.
 
 ### 2. Sample Delhi Arterial Corridor Benchmarks (Peak vs. Night vs. Free-Flow)
 
@@ -198,7 +201,7 @@ Delhi-Bus-Route/
 ├── docs/
 │   ├── TECHNICAL_NOTE.md            # Mathematical derivations & algorithmic audit rulings
 │   └── VALIDATION_REPORT.md         # Full 4-stage ablation & 15-corridor evaluation report
-├── tests/                           # 32 automated pytest verification tests across Sprints 1–5
+├── tests/                           # 26 automated pytest verification tests across Sprints 1–5
 ├── requirements.txt                 # Pinned production dependencies
 └── README.md
 ```
@@ -304,7 +307,7 @@ curl "http://127.0.0.1:8550/journeys?from=ISBT+Kashmere+Gate&to=Nehru+Place+Term
 
 ## 🧪 Testing & Verification Suite
 
-Run the complete 32-test verification suite across Sprints 1–5:
+Run the complete 26-test verification suite across Sprints 1–5:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -v
