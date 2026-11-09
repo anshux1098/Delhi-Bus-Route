@@ -557,11 +557,314 @@ def extract_stop_to_stop_segments(
                     "pace_sec_per_m": pace,
                 })
 
-    if not segment_rows:
-        return pl.DataFrame(schema=out_schema)
-
-    seg_df = pl.DataFrame(segment_rows, schema=out_schema, strict=False)
+    seg_df, _ = extract_segments_and_spans(matched_df, static_index)
     return seg_df
+
+
+def extract_segments_and_spans(
+    matched_df: pl.DataFrame,
+    static_index: StaticIndex,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Extract stop-to-stop segments with span_weight and extract poll-to-poll spans.
+
+    For each contiguous run:
+    - Identifies real matched ping-pairs (t_a, d_a) -> (t_b, d_b) with dt >= 15s and dd >= 80m.
+    - Maps each interpolated stop-to-stop segment to its containing span.
+    - Assigns span_weight = 1.0 / n_seg_in_span so one ping-pair counts exactly once.
+    - Emits observed_spans with overlap fractions across traversed corridor segments.
+    """
+    seg_schema = {
+        "trip_run_id": pl.Utf8,
+        "vehicle_id": pl.Utf8,
+        "route_id": pl.Utf8,
+        "shape_id": pl.Utf8,
+        "stop_u": pl.Utf8,
+        "stop_v": pl.Utf8,
+        "corridor_segment_id": pl.Utf8,
+        "dep_time_u": pl.Float64,
+        "dep_time_v": pl.Float64,
+        "travel_time_sec": pl.Float64,
+        "segment_length_m": pl.Float64,
+        "pace_sec_per_m": pl.Float64,
+        "span_id": pl.Utf8,
+        "n_seg_in_span": pl.Int64,
+        "span_weight": pl.Float64,
+    }
+
+    span_schema = {
+        "span_id": pl.Utf8,
+        "trip_run_id": pl.Utf8,
+        "vehicle_id": pl.Utf8,
+        "route_id": pl.Utf8,
+        "shape_id": pl.Utf8,
+        "t_a": pl.Float64,
+        "t_b": pl.Float64,
+        "travel_time_sec": pl.Float64,
+        "d_a": pl.Float64,
+        "d_b": pl.Float64,
+        "span_length_m": pl.Float64,
+        "span_pace_sec_per_m": pl.Float64,
+        "corridor_ids": pl.Utf8,
+        "overlap_fractions": pl.Utf8,
+        "overlap_meters": pl.Utf8,
+        "n_corridors": pl.Int64,
+        "dep_time_u": pl.Float64,
+    }
+
+    if matched_df.is_empty():
+        return pl.DataFrame(schema=seg_schema), pl.DataFrame(schema=span_schema)
+
+    # 1. Filter to valid on-route pings
+    on_df = matched_df.filter(
+        (~pl.col("is_off_route"))
+        & pl.col("shape_id").is_not_null()
+        & pl.col("route_id").is_not_null()
+    )
+
+    if on_df.is_empty():
+        return pl.DataFrame(schema=seg_schema), pl.DataFrame(schema=span_schema)
+
+    segment_rows: list[dict[str, Any]] = []
+    span_rows: list[dict[str, Any]] = []
+
+    # Group by vehicle_id, route_id, shape_id
+    grouped = on_df.sort(["vehicle_id", "timestamp"]).group_by(
+        ["vehicle_id", "route_id", "shape_id"], maintain_order=True
+    )
+
+    for (vid, rid, sid), group_df in grouped:
+        rs_info = static_index.get_route_shape(str(rid), str(sid))
+        if not rs_info or len(rs_info.stop_ids) < 2:
+            continue
+
+        stop_ids = rs_info.stop_ids
+        d_stops = rs_info.stop_dists_m
+        d_first = float(d_stops[0])
+        d_last = float(d_stops[-1])
+
+        timestamps = group_df["timestamp"].to_numpy().astype(np.float64)
+        d_vals = group_df["d_m"].to_numpy().astype(np.float64)
+
+        n_pings = len(timestamps)
+        if n_pings < 2:
+            continue
+
+        # Detect run splits on large time gaps (>1200s / 20 mins) or backwards jumps (>100m)
+        run_indices: list[list[int]] = [[0]]
+        for i in range(1, n_pings):
+            dt = timestamps[i] - timestamps[i - 1]
+            dd = d_vals[i] - d_vals[i - 1]
+            if dt > 1200.0 or dd < -100.0:
+                run_indices.append([i])
+            else:
+                run_indices[-1].append(i)
+
+        for run_idx, indices in enumerate(run_indices):
+            if len(indices) < 2:
+                continue
+
+            r_t = timestamps[indices].copy()
+            r_d = d_vals[indices].copy()
+
+            # 2. Terminal truncation:
+            dep_zone_idx = np.where(r_d <= d_first + 100.0)[0]
+            start_i = 0
+            departed_first_stop = False
+            if len(dep_zone_idx) > 0:
+                if dep_zone_idx[-1] < len(r_d) - 1:
+                    start_i = int(dep_zone_idx[-1])
+                    departed_first_stop = True
+                else:
+                    continue
+
+            arr_zone_idx = np.where(r_d >= d_last - 100.0)[0]
+            end_i = len(r_d)
+            entered_last_stop = False
+            if len(arr_zone_idx) > 0:
+                first_arr_idx = int(arr_zone_idx[0])
+                if first_arr_idx > start_i:
+                    end_i = first_arr_idx + 1
+                    entered_last_stop = True
+                else:
+                    continue
+
+            if end_i - start_i < 2:
+                continue
+
+            r_t_trunc = r_t[start_i:end_i].copy()
+            r_d_trunc = r_d[start_i:end_i].copy()
+
+            # Anchor terminal stop boundaries
+            if departed_first_stop and r_d_trunc[0] <= d_first + 100.0:
+                r_d_trunc[0] = min(r_d_trunc[0], d_first)
+            if entered_last_stop and r_d_trunc[-1] >= d_last - 100.0:
+                r_d_trunc[-1] = max(r_d_trunc[-1], d_last)
+
+            # 3. Fit IsotonicRegression on d_m vs timestamp
+            iso = IsotonicRegression(increasing=True, out_of_bounds="clip")
+            d_mono = iso.fit_transform(r_t_trunc, r_d_trunc)
+
+            min_d_run = float(np.min(d_mono))
+            max_d_run = float(np.max(d_mono))
+
+            if (max_d_run - min_d_run) <= MIN_RUN_DISPLACEMENT_M:
+                continue
+
+            covered_stop_indices = [
+                k for k in range(len(d_stops)) if min_d_run <= d_stops[k] <= max_d_run
+            ]
+
+            if len(covered_stop_indices) < 2:
+                continue
+
+            # Collapse flat spots to departure timestamp
+            unique_d = []
+            unique_t = []
+            for d_val in np.unique(d_mono):
+                mask = d_mono == d_val
+                unique_d.append(float(d_val))
+                unique_t.append(float(np.max(r_t_trunc[mask])))
+
+            if len(unique_d) < 2:
+                continue
+
+            u_d_arr = np.array(unique_d, dtype=np.float64)
+            u_t_arr = np.array(unique_t, dtype=np.float64)
+
+            trip_run_id = f"{vid}_{sid}_{int(r_t_trunc[0])}_{run_idx}"
+
+            # Build ping-to-ping spans (T_ab = t_b - t_a >= 15s, d_b - d_a >= 80m)
+            run_spans: list[dict[str, Any]] = []
+            n_p = len(r_t_trunc)
+            for p in range(n_p - 1):
+                t_a = float(r_t_trunc[p])
+                t_b = float(r_t_trunc[p + 1])
+                d_a = float(d_mono[p])
+                d_b = float(d_mono[p + 1])
+                dt = t_b - t_a
+                dd = d_b - d_a
+                if dt >= 15.0 and dd >= 80.0:
+                    s_id = f"{trip_run_id}_s{p}"
+                    run_spans.append({
+                        "span_id": s_id,
+                        "trip_run_id": trip_run_id,
+                        "vehicle_id": str(vid),
+                        "route_id": str(rid),
+                        "shape_id": str(sid),
+                        "t_a": t_a,
+                        "t_b": t_b,
+                        "travel_time_sec": dt,
+                        "d_a": d_a,
+                        "d_b": d_b,
+                        "span_length_m": dd,
+                        "span_pace_sec_per_m": dt / dd,
+                        "dep_time_u": t_a,
+                    })
+
+            # Extract stop-to-stop segments and map to span
+            run_segments: list[dict[str, Any]] = []
+            for idx_k in range(len(covered_stop_indices) - 1):
+                k_u = covered_stop_indices[idx_k]
+                k_v = covered_stop_indices[idx_k + 1]
+
+                if k_v != k_u + 1:
+                    continue
+
+                du = float(d_stops[k_u])
+                dv = float(d_stops[k_v])
+                seg_len = dv - du
+                if seg_len <= 10.0:
+                    continue
+
+                dep_u = float(np.interp(du, u_d_arr, u_t_arr))
+                dep_v = float(np.interp(dv, u_d_arr, u_t_arr))
+                travel_time = dep_v - dep_u
+
+                if travel_time <= 0.0:
+                    continue
+
+                pace = travel_time / seg_len
+                if not (MIN_REALISTIC_PACE_S_PER_M <= pace <= MAX_REALISTIC_PACE_S_PER_M):
+                    continue
+
+                stop_u_id = stop_ids[k_u]
+                stop_v_id = stop_ids[k_v]
+                nominal_len_100m = int(round(seg_len / 100.0) * 100)
+                corridor_seg_id = f"{stop_u_id}_{stop_v_id}_{nominal_len_100m}"
+
+                # Map to span by midpoint
+                d_mid = (du + dv) / 2.0
+                best_span_id = None
+                for s in run_spans:
+                    if s["d_a"] <= d_mid <= s["d_b"]:
+                        best_span_id = s["span_id"]
+                        break
+                if best_span_id is None and run_spans:
+                    nearest_idx = int(
+                        np.argmin([min(abs(d_mid - s["d_a"]), abs(d_mid - s["d_b"])) for s in run_spans])
+                    )
+                    best_span_id = run_spans[nearest_idx]["span_id"]
+                if best_span_id is None:
+                    best_span_id = f"{trip_run_id}_s0"
+
+                run_segments.append({
+                    "trip_run_id": trip_run_id,
+                    "vehicle_id": str(vid),
+                    "route_id": str(rid),
+                    "shape_id": str(sid),
+                    "stop_u": stop_u_id,
+                    "stop_v": stop_v_id,
+                    "corridor_segment_id": corridor_seg_id,
+                    "dep_time_u": dep_u,
+                    "dep_time_v": dep_v,
+                    "travel_time_sec": travel_time,
+                    "segment_length_m": seg_len,
+                    "pace_sec_per_m": pace,
+                    "span_id": best_span_id,
+                    "du": du,
+                    "dv": dv,
+                })
+
+            # Compute overlap of spans across corridor segments
+            for s in run_spans:
+                s_da = s["d_a"]
+                s_db = s["d_b"]
+                c_ids = []
+                c_fracs = []
+                c_meters = []
+                for seg in run_segments:
+                    seg_u = seg["du"]
+                    seg_v = seg["dv"]
+                    ov = max(0.0, min(s_db, seg_v) - max(s_da, seg_u))
+                    if ov >= 5.0:
+                        c_ids.append(seg["corridor_segment_id"])
+                        c_fracs.append(round(ov / (seg_v - seg_u), 4))
+                        c_meters.append(round(ov, 1))
+
+                s_copy = dict(s)
+                s_copy["corridor_ids"] = ",".join(c_ids)
+                s_copy["overlap_fractions"] = ",".join(map(str, c_fracs))
+                s_copy["overlap_meters"] = ",".join(map(str, c_meters))
+                s_copy["n_corridors"] = len(c_ids)
+                span_rows.append(s_copy)
+
+            # Compute n_seg_in_span and span_weight = 1.0 / n_seg_in_span
+            span_counts: dict[str, int] = {}
+            for seg in run_segments:
+                sid_key = seg["span_id"]
+                span_counts[sid_key] = span_counts.get(sid_key, 0) + 1
+
+            for seg in run_segments:
+                cnt = span_counts.get(seg["span_id"], 1)
+                seg["n_seg_in_span"] = cnt
+                seg["span_weight"] = 1.0 / cnt
+                del seg["du"]
+                del seg["dv"]
+                segment_rows.append(seg)
+
+    seg_df = pl.DataFrame(segment_rows, schema=seg_schema, strict=False) if segment_rows else pl.DataFrame(schema=seg_schema)
+    span_df = pl.DataFrame(span_rows, schema=span_schema, strict=False) if span_rows else pl.DataFrame(schema=span_schema)
+    return seg_df, span_df
 
 
 if __name__ == "__main__":

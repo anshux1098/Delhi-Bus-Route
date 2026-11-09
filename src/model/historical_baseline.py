@@ -24,7 +24,11 @@ import polars as pl
 os.environ.setdefault("NUMBA_CPU_NAME", "generic")
 
 from src.ingestion.hygiene import find_project_root, load_and_clean_pings
-from src.matching.map_matcher import extract_stop_to_stop_segments, match_pings
+from src.matching.map_matcher import (
+    extract_segments_and_spans,
+    extract_stop_to_stop_segments,
+    match_pings,
+)
 from src.matching.shape_indexer import load_static_index
 
 # Ensure UTF-8 output encoding for Windows consoles
@@ -37,6 +41,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 PROJECT_ROOT = find_project_root()
 PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 OBSERVED_SEGMENTS_PATH = PROCESSED_DIR / "observed_segments.parquet"
+SPANS_PATH = PROCESSED_DIR / "observed_spans.parquet"
 CATALOG_PATH = PROCESSED_DIR / "segment_catalog.parquet"
 EB_PRIORS_PATH = PROCESSED_DIR / "eb_priors.parquet"
 
@@ -209,19 +214,20 @@ class EmpiricalBayesPrior:
 
 def consolidate_observed_segments(
     save_path: Path | None = None,
-) -> pl.DataFrame:
-    """Run full ingestion and segment extraction across all historical pings."""
+    save_spans_path: Path | None = None,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Run full ingestion, segment extraction, and poll-to-poll span extraction."""
     t0 = time.time()
     idx = load_static_index()
     cleaned = load_and_clean_pings()
     matched = match_pings(cleaned, idx)
-    segments = extract_stop_to_stop_segments(matched, idx)
+    segments, spans = extract_segments_and_spans(matched, idx)
 
     if segments.is_empty():
         print("[WARN] No observed segments extracted from historical pings.")
-        return segments
+        return segments, spans
 
-    # Add IST time columns
+    # Add IST time columns to segments
     times_u = segments["dep_time_u"].to_numpy()
     feat = epoch_to_ist_features(times_u)
 
@@ -232,7 +238,7 @@ def consolidate_observed_segments(
         is_weekend=pl.Series("is_weekend", feat["is_weekend"], dtype=pl.Int8),
     )
 
-    # Attach catalog features
+    # Attach catalog features to segments
     if CATALOG_PATH.exists():
         catalog = pl.read_parquet(CATALOG_PATH)
         cat_cols = [
@@ -255,11 +261,29 @@ def consolidate_observed_segments(
     out_file = save_path or OBSERVED_SEGMENTS_PATH
     out_file.parent.mkdir(parents=True, exist_ok=True)
     segments.write_parquet(out_file, compression="zstd")
+
+    # Add IST time columns to spans
+    if not spans.is_empty():
+        times_span = spans["dep_time_u"].to_numpy()
+        feat_spans = epoch_to_ist_features(times_span)
+        spans = spans.with_columns(
+            bin_15m=pl.Series("bin_15m", feat_spans["bin_15m"], dtype=pl.Int32),
+            hour_float=pl.Series("hour_float", feat_spans["hour_float"], dtype=pl.Float64),
+            day_of_week=pl.Series("day_of_week", feat_spans["day_of_week"], dtype=pl.Int8),
+            is_weekend=pl.Series("is_weekend", feat_spans["is_weekend"], dtype=pl.Int8),
+        )
+        out_spans_file = save_spans_path or SPANS_PATH
+        out_spans_file.parent.mkdir(parents=True, exist_ok=True)
+        spans.write_parquet(out_spans_file, compression="zstd")
+        print(
+            f"[OK] Consolidated {spans.height:,} observed spans to {out_spans_file.name}"
+        )
+
     print(
         f"[OK] Consolidated {segments.height:,} observed traversals to "
         f"{out_file.name} in {time.time() - t0:.2f}s"
     )
-    return segments
+    return segments, spans
 
 
 def compute_oof_eb_features(
