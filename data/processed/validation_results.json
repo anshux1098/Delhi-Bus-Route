@@ -1,22 +1,74 @@
 {
-  "timestamp": "2026-11-09T20:39:05.992303+05:30",
+  "timestamp": "2026-11-09T23:46:19.697247+05:30",
   "summary": {
-    "evaluation_protocol": "Strictly Out-of-Fold / Held-Out Vehicles (20% vehicle split, causal upstream ping)",
+    "evaluation_protocol": "Strictly Out-of-Fold Three-Way Vehicle Split (60% train / 20% calib / 20% untouched test)",
+    "n_total_vehicles": 5555,
+    "n_train_vehicles": 3333,
+    "n_calib_vehicles": 1111,
+    "n_test_vehicles": 1111,
     "n_held_out_trips": 1488,
     "n_held_out_segments": 24053,
-    "held_out_segment_p85_coverage_pct": 82.88,
-    "held_out_segment_bias_ratio": 0.9945,
+    "held_out_segment_mae_sec": 24.33,
+    "held_out_segment_rmse_sec": 40.12,
+    "held_out_segment_p85_coverage_pct": 83.44,
+    "held_out_segment_bias_ratio": 0.9979,
+    "calibration_factor": 1.012,
     "intra_trip_correlation_rho": 0.6,
+    "intra_trip_correlation_rho_unclipped": 0.376,
+    "journey_p85_kappa": 0.93,
+    "gamma_self": [
+      0.3892,
+      60.0
+    ],
+    "gamma_cross": [
+      0.1,
+      5.0
+    ],
+    "horizon_rebuild_median_ms": 2.82,
     "mean_trip_duration_sec": 1370.8,
     "mean_trip_duration_mins": 22.85,
     "mean_segments_per_trip": 15.7,
-    "mae_reduction_pct": 47.2,
-    "rmse_reduction_pct": 44.8
+    "mae_reduction_pct": 46.3,
+    "rmse_reduction_pct": 44.7,
+    "stratified_by_trip_length": [
+      {
+        "stratum": "K = 2",
+        "n_trips": 106,
+        "mae_sec": 80.6,
+        "mape_pct": 39.8,
+        "rmse_sec": 123.3,
+        "bias_ratio": 0.8672
+      },
+      {
+        "stratum": "K = 3",
+        "n_trips": 135,
+        "mae_sec": 93.7,
+        "mape_pct": 24.7,
+        "rmse_sec": 133.1,
+        "bias_ratio": 0.9109
+      },
+      {
+        "stratum": "K = 4-6",
+        "n_trips": 403,
+        "mae_sec": 94.4,
+        "mape_pct": 16.3,
+        "rmse_sec": 134.7,
+        "bias_ratio": 0.9432
+      },
+      {
+        "stratum": "K >= 7",
+        "n_trips": 1085,
+        "mae_sec": 196.5,
+        "mape_pct": 13.0,
+        "rmse_sec": 281.3,
+        "bias_ratio": 1.0194
+      }
+    ]
   },
   "ablation_metrics": [
     {
       "stage_id": "Stage 1",
-      "stage_name": "Baseline 1: Static GTFS Timetable (stop_times.txt Schedule)",
+      "stage_name": "Baseline 1: Raw Static GTFS Timetable (stop_times.txt Schedule)",
       "mae_sec": 292.4,
       "mae_mins": 4.87,
       "mape_pct": 25.38,
@@ -27,32 +79,42 @@
     {
       "stage_id": "Stage 2",
       "stage_name": "Stage 2: Out-of-Fold Empirical Bayes Corridor Profile Only",
-      "mae_sec": 173.7,
-      "mae_mins": 2.9,
-      "mape_pct": 15.94,
-      "rmse_sec": 250.8,
-      "bias_ratio": 1.0201,
+      "mae_sec": 180.4,
+      "mae_mins": 3.01,
+      "mape_pct": 16.53,
+      "rmse_sec": 257.7,
+      "bias_ratio": 1.0262,
       "p85_coverage_pct": null
     },
     {
       "stage_id": "Stage 3",
       "stage_name": "Stage 3: + OOF Calibrated 400-Tree Gamma-LightGBM",
-      "mae_sec": 157.3,
-      "mae_mins": 2.62,
-      "mape_pct": 14.26,
-      "rmse_sec": 239.3,
-      "bias_ratio": 1.0069,
+      "mae_sec": 159.7,
+      "mae_mins": 2.66,
+      "mape_pct": 14.57,
+      "rmse_sec": 240.1,
+      "bias_ratio": 1.0116,
       "p85_coverage_pct": null
     },
     {
-      "stage_id": "Stage 4",
-      "stage_name": "Stage 4: + Causal Live Anomaly Decay Blend & Lognormal P85",
-      "mae_sec": 154.3,
-      "mae_mins": 2.57,
-      "mape_pct": 13.84,
-      "rmse_sec": 235.5,
-      "bias_ratio": 1.0052,
-      "p85_coverage_pct": 88.6
+      "stage_id": "Stage 4a (cross-vehicle)",
+      "stage_name": "Stage 4a (cross-vehicle): + Cross-Vehicle Ratio Live Kernel (gamma_cross)",
+      "mae_sec": 158.6,
+      "mae_mins": 2.64,
+      "mape_pct": 14.46,
+      "rmse_sec": 238.8,
+      "bias_ratio": 1.0092,
+      "p85_coverage_pct": 85.8
+    },
+    {
+      "stage_id": "Stage 4b (same-vehicle)",
+      "stage_name": "Stage 4b (same-vehicle): + Same-Vehicle Causal Ratio Live Kernel (gamma_self)",
+      "mae_sec": 156.9,
+      "mae_mins": 2.61,
+      "mape_pct": 14.15,
+      "rmse_sec": 236.3,
+      "bias_ratio": 1.0097,
+      "p85_coverage_pct": 86.1
     }
   ],
   "span_metrics": {
@@ -71,29 +133,29 @@
       "routes": "405EUP",
       "distance_km": 5.0,
       "transfers": 0,
-      "static_gtfs_mins": 24.2,
+      "static_gtfs_mins": 17.9,
       "free_flow_mins": 17.7,
       "hybrid_mean_mins": 30.1,
       "hybrid_p85_mins": 36.2,
       "p85_buffer_mins": 6.2,
       "traffic_delay_mins": 12.4,
-      "observed_benchmark_mins": 23.3
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
       "destination": "Nehru Place",
       "period": "Midday Off-Peak (14:00)",
       "departure_str": "14:00",
-      "routes": "425CLUP",
-      "distance_km": 16.1,
+      "routes": "425UP",
+      "distance_km": 18.1,
       "transfers": 0,
-      "static_gtfs_mins": 86.5,
-      "free_flow_mins": 66.6,
-      "hybrid_mean_mins": 80.6,
-      "hybrid_p85_mins": 101.6,
-      "p85_buffer_mins": 21.0,
-      "traffic_delay_mins": 14.0,
-      "observed_benchmark_mins": 76.2
+      "static_gtfs_mins": 69.1,
+      "free_flow_mins": 65.1,
+      "hybrid_mean_mins": 80.2,
+      "hybrid_p85_mins": 94.0,
+      "p85_buffer_mins": 13.8,
+      "traffic_delay_mins": 15.2,
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -103,13 +165,13 @@
       "routes": "171DOWN",
       "distance_km": 7.6,
       "transfers": 0,
-      "static_gtfs_mins": 42.7,
+      "static_gtfs_mins": 33.0,
       "free_flow_mins": 32.7,
       "hybrid_mean_mins": 54.8,
       "hybrid_p85_mins": 67.2,
       "p85_buffer_mins": 12.4,
       "traffic_delay_mins": 22.1,
-      "observed_benchmark_mins": 41.4
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -119,13 +181,13 @@
       "routes": "502UP",
       "distance_km": 15.7,
       "transfers": 0,
-      "static_gtfs_mins": 77.1,
+      "static_gtfs_mins": 75.2,
       "free_flow_mins": 56.7,
       "hybrid_mean_mins": 64.8,
       "hybrid_p85_mins": 75.9,
       "p85_buffer_mins": 11.0,
       "traffic_delay_mins": 8.1,
-      "observed_benchmark_mins": 61.4
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -135,13 +197,13 @@
       "routes": "247UP",
       "distance_km": 21.3,
       "transfers": 0,
-      "static_gtfs_mins": 90.9,
+      "static_gtfs_mins": 78.8,
       "free_flow_mins": 64.3,
       "hybrid_mean_mins": 98.4,
       "hybrid_p85_mins": 118.1,
       "p85_buffer_mins": 19.7,
       "traffic_delay_mins": 34.1,
-      "observed_benchmark_mins": 87.3
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -151,13 +213,13 @@
       "routes": "072(NS)UP",
       "distance_km": 29.0,
       "transfers": 0,
-      "static_gtfs_mins": 111.0,
+      "static_gtfs_mins": 89.2,
       "free_flow_mins": 74.7,
       "hybrid_mean_mins": 112.9,
       "hybrid_p85_mins": 134.9,
       "p85_buffer_mins": 22.0,
       "traffic_delay_mins": 38.2,
-      "observed_benchmark_mins": 92.5
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -167,13 +229,13 @@
       "routes": "221UP",
       "distance_km": 13.7,
       "transfers": 0,
-      "static_gtfs_mins": 55.1,
+      "static_gtfs_mins": 54.3,
       "free_flow_mins": 36.7,
       "hybrid_mean_mins": 52.5,
       "hybrid_p85_mins": 62.4,
       "p85_buffer_mins": 9.8,
       "traffic_delay_mins": 15.8,
-      "observed_benchmark_mins": 52.8
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -183,13 +245,13 @@
       "routes": "429UP",
       "distance_km": 14.6,
       "transfers": 0,
-      "static_gtfs_mins": 63.8,
+      "static_gtfs_mins": 43.0,
       "free_flow_mins": 45.8,
       "hybrid_mean_mins": 55.2,
       "hybrid_p85_mins": 66.4,
       "p85_buffer_mins": 11.2,
       "traffic_delay_mins": 9.4,
-      "observed_benchmark_mins": 49.1
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -199,13 +261,13 @@
       "routes": "901UP",
       "distance_km": 11.5,
       "transfers": 0,
-      "static_gtfs_mins": 46.1,
+      "static_gtfs_mins": 33.1,
       "free_flow_mins": 30.8,
       "hybrid_mean_mins": 42.5,
       "hybrid_p85_mins": 50.6,
       "p85_buffer_mins": 8.1,
       "traffic_delay_mins": 11.7,
-      "observed_benchmark_mins": 44.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -215,13 +277,13 @@
       "routes": "863UP2",
       "distance_km": 4.8,
       "transfers": 0,
-      "static_gtfs_mins": 27.2,
+      "static_gtfs_mins": 24.3,
       "free_flow_mins": 21.0,
       "hybrid_mean_mins": 24.6,
       "hybrid_p85_mins": 32.7,
       "p85_buffer_mins": 8.1,
       "traffic_delay_mins": 3.6,
-      "observed_benchmark_mins": 24.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -231,13 +293,13 @@
       "routes": "729UP",
       "distance_km": 15.8,
       "transfers": 0,
-      "static_gtfs_mins": 64.9,
+      "static_gtfs_mins": 59.6,
       "free_flow_mins": 45.7,
       "hybrid_mean_mins": 77.5,
       "hybrid_p85_mins": 92.1,
       "p85_buffer_mins": 14.7,
       "traffic_delay_mins": 31.7,
-      "observed_benchmark_mins": 62.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -247,13 +309,13 @@
       "routes": "TMS(+)UP",
       "distance_km": 10.6,
       "transfers": 0,
-      "static_gtfs_mins": 51.7,
+      "static_gtfs_mins": 37.5,
       "free_flow_mins": 37.8,
       "hybrid_mean_mins": 38.4,
       "hybrid_p85_mins": 48.1,
       "p85_buffer_mins": 9.7,
       "traffic_delay_mins": 0.7,
-      "observed_benchmark_mins": 41.0
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -263,13 +325,13 @@
       "routes": "402UP",
       "distance_km": 19.0,
       "transfers": 0,
-      "static_gtfs_mins": 84.4,
+      "static_gtfs_mins": 70.9,
       "free_flow_mins": 60.0,
       "hybrid_mean_mins": 94.4,
       "hybrid_p85_mins": 113.4,
       "p85_buffer_mins": 19.0,
       "traffic_delay_mins": 34.4,
-      "observed_benchmark_mins": 81.3
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ISBT Kashmere Gate",
@@ -279,13 +341,13 @@
       "routes": "TMS(-)DOWN",
       "distance_km": 15.5,
       "transfers": 0,
-      "static_gtfs_mins": 69.5,
+      "static_gtfs_mins": 52.6,
       "free_flow_mins": 48.7,
       "hybrid_mean_mins": 57.7,
       "hybrid_p85_mins": 67.8,
       "p85_buffer_mins": 10.1,
       "traffic_delay_mins": 9.0,
-      "observed_benchmark_mins": 59.7
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -295,13 +357,13 @@
       "routes": "621DOWN",
       "distance_km": 6.4,
       "transfers": 0,
-      "static_gtfs_mins": 48.2,
+      "static_gtfs_mins": 17.2,
       "free_flow_mins": 40.2,
       "hybrid_mean_mins": 48.6,
       "hybrid_p85_mins": 64.3,
       "p85_buffer_mins": 15.7,
       "traffic_delay_mins": 8.4,
-      "observed_benchmark_mins": 47.1
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -311,13 +373,13 @@
       "routes": "425AUP",
       "distance_km": 11.1,
       "transfers": 0,
-      "static_gtfs_mins": 45.1,
+      "static_gtfs_mins": 47.4,
       "free_flow_mins": 31.7,
       "hybrid_mean_mins": 33.6,
       "hybrid_p85_mins": 44.0,
       "p85_buffer_mins": 10.4,
       "traffic_delay_mins": 1.9,
-      "observed_benchmark_mins": 34.0
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -327,13 +389,13 @@
       "routes": "993UP",
       "distance_km": 3.3,
       "transfers": 0,
-      "static_gtfs_mins": 22.5,
+      "static_gtfs_mins": 10.5,
       "free_flow_mins": 17.4,
       "hybrid_mean_mins": 21.5,
       "hybrid_p85_mins": 24.4,
       "p85_buffer_mins": 2.9,
       "traffic_delay_mins": 4.1,
-      "observed_benchmark_mins": 21.9
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -343,13 +405,13 @@
       "routes": "0502(NS)UP",
       "distance_km": 8.9,
       "transfers": 0,
-      "static_gtfs_mins": 41.8,
+      "static_gtfs_mins": 30.1,
       "free_flow_mins": 30.1,
       "hybrid_mean_mins": 34.9,
       "hybrid_p85_mins": 40.5,
       "p85_buffer_mins": 5.6,
       "traffic_delay_mins": 4.8,
-      "observed_benchmark_mins": 36.1
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -359,13 +421,13 @@
       "routes": "139UP/174UP",
       "distance_km": 28.5,
       "transfers": 1,
-      "static_gtfs_mins": 110.1,
+      "static_gtfs_mins": 89.2,
       "free_flow_mins": 72.5,
       "hybrid_mean_mins": 118.1,
       "hybrid_p85_mins": 136.0,
       "p85_buffer_mins": 17.9,
       "traffic_delay_mins": 45.6,
-      "observed_benchmark_mins": 105.3
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -375,13 +437,13 @@
       "routes": "783UP",
       "distance_km": 25.9,
       "transfers": 0,
-      "static_gtfs_mins": 118.3,
+      "static_gtfs_mins": 113.8,
       "free_flow_mins": 85.5,
       "hybrid_mean_mins": 96.0,
       "hybrid_p85_mins": 118.8,
       "p85_buffer_mins": 22.8,
       "traffic_delay_mins": 10.4,
-      "observed_benchmark_mins": 92.4
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -391,13 +453,13 @@
       "routes": "0943(NS)DOWN",
       "distance_km": 9.6,
       "transfers": 0,
-      "static_gtfs_mins": 50.3,
+      "static_gtfs_mins": 35.6,
       "free_flow_mins": 40.3,
       "hybrid_mean_mins": 51.9,
       "hybrid_p85_mins": 66.5,
       "p85_buffer_mins": 14.6,
       "traffic_delay_mins": 11.6,
-      "observed_benchmark_mins": 48.7
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -407,13 +469,13 @@
       "routes": "411UP",
       "distance_km": 8.2,
       "transfers": 0,
-      "static_gtfs_mins": 34.3,
+      "static_gtfs_mins": 30.4,
       "free_flow_mins": 24.6,
       "hybrid_mean_mins": 30.7,
       "hybrid_p85_mins": 39.9,
       "p85_buffer_mins": 9.2,
       "traffic_delay_mins": 6.1,
-      "observed_benchmark_mins": 29.1
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -423,13 +485,13 @@
       "routes": "167UP",
       "distance_km": 17.8,
       "transfers": 0,
-      "static_gtfs_mins": 73.1,
+      "static_gtfs_mins": 60.7,
       "free_flow_mins": 50.4,
       "hybrid_mean_mins": 79.3,
       "hybrid_p85_mins": 99.8,
       "p85_buffer_mins": 20.6,
       "traffic_delay_mins": 28.9,
-      "observed_benchmark_mins": 70.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -439,13 +501,13 @@
       "routes": "353DOWN",
       "distance_km": 6.4,
       "transfers": 0,
-      "static_gtfs_mins": 32.6,
+      "static_gtfs_mins": 21.9,
       "free_flow_mins": 23.9,
       "hybrid_mean_mins": 29.7,
       "hybrid_p85_mins": 34.3,
       "p85_buffer_mins": 4.6,
       "traffic_delay_mins": 5.8,
-      "observed_benchmark_mins": 26.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -455,13 +517,13 @@
       "routes": "706UP",
       "distance_km": 11.3,
       "transfers": 0,
-      "static_gtfs_mins": 40.5,
+      "static_gtfs_mins": 39.6,
       "free_flow_mins": 27.4,
       "hybrid_mean_mins": 39.1,
       "hybrid_p85_mins": 47.5,
       "p85_buffer_mins": 8.4,
       "traffic_delay_mins": 11.7,
-      "observed_benchmark_mins": 38.6
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -471,13 +533,13 @@
       "routes": "TMS(+)UP",
       "distance_km": 4.8,
       "transfers": 0,
-      "static_gtfs_mins": 36.2,
+      "static_gtfs_mins": 15.4,
       "free_flow_mins": 29.1,
       "hybrid_mean_mins": 29.1,
       "hybrid_p85_mins": 35.1,
       "p85_buffer_mins": 5.9,
       "traffic_delay_mins": 0.0,
-      "observed_benchmark_mins": 33.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -487,13 +549,13 @@
       "routes": "402UP",
       "distance_km": 14.0,
       "transfers": 0,
-      "static_gtfs_mins": 55.4,
+      "static_gtfs_mins": 51.8,
       "free_flow_mins": 37.6,
       "hybrid_mean_mins": 64.4,
       "hybrid_p85_mins": 79.3,
       "p85_buffer_mins": 14.9,
       "traffic_delay_mins": 26.8,
-      "observed_benchmark_mins": 53.0
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "ITO BSZ Marg",
@@ -503,29 +565,29 @@
       "routes": "85UP",
       "distance_km": 13.9,
       "transfers": 0,
-      "static_gtfs_mins": 59.5,
+      "static_gtfs_mins": 56.1,
       "free_flow_mins": 42.1,
       "hybrid_mean_mins": 49.9,
       "hybrid_p85_mins": 61.2,
       "p85_buffer_mins": 11.3,
       "traffic_delay_mins": 7.8,
-      "observed_benchmark_mins": 45.6
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
       "destination": "ISBT Kashmere Gate",
       "period": "Peak Morning (08:30)",
       "departure_str": "08:30",
-      "routes": "412UP",
-      "distance_km": 16.7,
+      "routes": "425CLDOWN",
+      "distance_km": 16.3,
       "transfers": 0,
-      "static_gtfs_mins": 91.9,
-      "free_flow_mins": 70.4,
-      "hybrid_mean_mins": 84.7,
-      "hybrid_p85_mins": 105.7,
-      "p85_buffer_mins": 21.1,
-      "traffic_delay_mins": 14.2,
-      "observed_benchmark_mins": 89.1
+      "static_gtfs_mins": 62.1,
+      "free_flow_mins": 58.0,
+      "hybrid_mean_mins": 85.0,
+      "hybrid_p85_mins": 103.4,
+      "p85_buffer_mins": 18.4,
+      "traffic_delay_mins": 27.0,
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -535,13 +597,13 @@
       "routes": "425CLDOWN",
       "distance_km": 11.3,
       "transfers": 0,
-      "static_gtfs_mins": 57.5,
+      "static_gtfs_mins": 43.5,
       "free_flow_mins": 43.6,
       "hybrid_mean_mins": 51.2,
       "hybrid_p85_mins": 64.1,
       "p85_buffer_mins": 12.9,
       "traffic_delay_mins": 7.6,
-      "observed_benchmark_mins": 50.4
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -551,13 +613,13 @@
       "routes": "433BDOWN",
       "distance_km": 14.5,
       "transfers": 0,
-      "static_gtfs_mins": 87.1,
+      "static_gtfs_mins": 52.7,
       "free_flow_mins": 68.7,
       "hybrid_mean_mins": 90.8,
       "hybrid_p85_mins": 112.4,
       "p85_buffer_mins": 21.6,
       "traffic_delay_mins": 22.1,
-      "observed_benchmark_mins": 84.7
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -567,13 +629,13 @@
       "routes": "567AUP",
       "distance_km": 5.9,
       "transfers": 0,
-      "static_gtfs_mins": 22.1,
+      "static_gtfs_mins": 27.6,
       "free_flow_mins": 14.9,
       "hybrid_mean_mins": 18.0,
       "hybrid_p85_mins": 22.5,
       "p85_buffer_mins": 4.5,
       "traffic_delay_mins": 3.0,
-      "observed_benchmark_mins": 16.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -583,13 +645,13 @@
       "routes": "DS-5UP",
       "distance_km": 33.4,
       "transfers": 0,
-      "static_gtfs_mins": 129.3,
+      "static_gtfs_mins": 122.3,
       "free_flow_mins": 89.4,
       "hybrid_mean_mins": 105.1,
       "hybrid_p85_mins": 131.3,
       "p85_buffer_mins": 26.2,
       "traffic_delay_mins": 15.7,
-      "observed_benchmark_mins": 123.8
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -599,13 +661,13 @@
       "routes": "764DOWN",
       "distance_km": 29.4,
       "transfers": 0,
-      "static_gtfs_mins": 109.8,
+      "static_gtfs_mins": 113.5,
       "free_flow_mins": 71.3,
       "hybrid_mean_mins": 82.1,
       "hybrid_p85_mins": 98.2,
       "p85_buffer_mins": 16.2,
       "traffic_delay_mins": 10.8,
-      "observed_benchmark_mins": 91.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -615,13 +677,13 @@
       "routes": "534DOWN",
       "distance_km": 19.7,
       "transfers": 0,
-      "static_gtfs_mins": 80.2,
+      "static_gtfs_mins": 72.4,
       "free_flow_mins": 53.9,
       "hybrid_mean_mins": 80.8,
       "hybrid_p85_mins": 96.0,
       "p85_buffer_mins": 15.2,
       "traffic_delay_mins": 26.9,
-      "observed_benchmark_mins": 76.9
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -631,13 +693,13 @@
       "routes": "492UP",
       "distance_km": 3.3,
       "transfers": 0,
-      "static_gtfs_mins": 16.8,
+      "static_gtfs_mins": 10.5,
       "free_flow_mins": 12.6,
       "hybrid_mean_mins": 14.0,
       "hybrid_p85_mins": 19.6,
       "p85_buffer_mins": 5.6,
       "traffic_delay_mins": 1.3,
-      "observed_benchmark_mins": 13.5
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -647,13 +709,13 @@
       "routes": "442DOWN",
       "distance_km": 26.5,
       "transfers": 0,
-      "static_gtfs_mins": 102.2,
+      "static_gtfs_mins": 84.2,
       "free_flow_mins": 68.8,
       "hybrid_mean_mins": 95.9,
       "hybrid_p85_mins": 114.6,
       "p85_buffer_mins": 18.7,
       "traffic_delay_mins": 27.1,
-      "observed_benchmark_mins": 97.7
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -663,13 +725,13 @@
       "routes": "D-056DOWN",
       "distance_km": 17.8,
       "transfers": 0,
-      "static_gtfs_mins": 88.4,
+      "static_gtfs_mins": 60.8,
       "free_flow_mins": 67.0,
       "hybrid_mean_mins": 82.1,
       "hybrid_p85_mins": 103.6,
       "p85_buffer_mins": 21.5,
       "traffic_delay_mins": 15.2,
-      "observed_benchmark_mins": 77.1
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -679,13 +741,13 @@
       "routes": "567AUP",
       "distance_km": 12.2,
       "transfers": 0,
-      "static_gtfs_mins": 53.4,
+      "static_gtfs_mins": 36.8,
       "free_flow_mins": 37.4,
       "hybrid_mean_mins": 56.4,
       "hybrid_p85_mins": 66.5,
       "p85_buffer_mins": 10.2,
       "traffic_delay_mins": 18.9,
-      "observed_benchmark_mins": 51.4
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -695,13 +757,13 @@
       "routes": "412UP",
       "distance_km": 6.5,
       "transfers": 0,
-      "static_gtfs_mins": 31.9,
+      "static_gtfs_mins": 22.0,
       "free_flow_mins": 23.9,
       "hybrid_mean_mins": 25.7,
       "hybrid_p85_mins": 31.0,
       "p85_buffer_mins": 5.2,
       "traffic_delay_mins": 1.9,
-      "observed_benchmark_mins": 25.5
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -711,13 +773,13 @@
       "routes": "493UP",
       "distance_km": 7.3,
       "transfers": 0,
-      "static_gtfs_mins": 31.1,
+      "static_gtfs_mins": 21.9,
       "free_flow_mins": 20.9,
       "hybrid_mean_mins": 29.0,
       "hybrid_p85_mins": 35.5,
       "p85_buffer_mins": 6.5,
       "traffic_delay_mins": 8.1,
-      "observed_benchmark_mins": 29.9
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Nehru Place",
@@ -727,29 +789,29 @@
       "routes": "567AUP",
       "distance_km": 23.2,
       "transfers": 0,
-      "static_gtfs_mins": 106.6,
+      "static_gtfs_mins": 88.5,
       "free_flow_mins": 77.7,
       "hybrid_mean_mins": 88.0,
       "hybrid_p85_mins": 109.0,
       "p85_buffer_mins": 21.1,
       "traffic_delay_mins": 10.2,
-      "observed_benchmark_mins": 91.8
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
       "destination": "ISBT Kashmere Gate",
       "period": "Peak Evening (18:30)",
       "departure_str": "18:30",
-      "routes": "729DOWN",
-      "distance_km": 7.5,
+      "routes": "120BUP",
+      "distance_km": 7.4,
       "transfers": 0,
-      "static_gtfs_mins": 37.5,
-      "free_flow_mins": 27.8,
-      "hybrid_mean_mins": 54.0,
-      "hybrid_p85_mins": 65.6,
-      "p85_buffer_mins": 11.6,
-      "traffic_delay_mins": 26.1,
-      "observed_benchmark_mins": 36.2
+      "static_gtfs_mins": 26.0,
+      "free_flow_mins": 27.0,
+      "hybrid_mean_mins": 51.8,
+      "hybrid_p85_mins": 60.9,
+      "p85_buffer_mins": 9.1,
+      "traffic_delay_mins": 24.8,
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -759,13 +821,13 @@
       "routes": "139UP",
       "distance_km": 3.7,
       "transfers": 0,
-      "static_gtfs_mins": 21.6,
+      "static_gtfs_mins": 13.9,
       "free_flow_mins": 17.1,
       "hybrid_mean_mins": 19.3,
       "hybrid_p85_mins": 26.8,
       "p85_buffer_mins": 7.5,
       "traffic_delay_mins": 2.2,
-      "observed_benchmark_mins": 17.9
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -775,13 +837,13 @@
       "routes": "433BUP",
       "distance_km": 14.0,
       "transfers": 0,
-      "static_gtfs_mins": 86.4,
+      "static_gtfs_mins": 52.7,
       "free_flow_mins": 68.3,
       "hybrid_mean_mins": 84.5,
       "hybrid_p85_mins": 105.2,
       "p85_buffer_mins": 20.7,
       "traffic_delay_mins": 16.2,
-      "observed_benchmark_mins": 84.1
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -791,13 +853,13 @@
       "routes": "460UP",
       "distance_km": 8.1,
       "transfers": 0,
-      "static_gtfs_mins": 40.1,
+      "static_gtfs_mins": 35.0,
       "free_flow_mins": 29.6,
       "hybrid_mean_mins": 32.1,
       "hybrid_p85_mins": 38.4,
       "p85_buffer_mins": 6.2,
       "traffic_delay_mins": 2.5,
-      "observed_benchmark_mins": 35.0
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -807,13 +869,13 @@
       "routes": "957UP",
       "distance_km": 25.2,
       "transfers": 0,
-      "static_gtfs_mins": 98.5,
+      "static_gtfs_mins": 85.5,
       "free_flow_mins": 65.5,
       "hybrid_mean_mins": 114.8,
       "hybrid_p85_mins": 138.3,
       "p85_buffer_mins": 23.5,
       "traffic_delay_mins": 49.3,
-      "observed_benchmark_mins": 94.3
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -823,13 +885,13 @@
       "routes": "RL-77BUP",
       "distance_km": 26.4,
       "transfers": 0,
-      "static_gtfs_mins": 123.2,
+      "static_gtfs_mins": 100.3,
       "free_flow_mins": 89.0,
       "hybrid_mean_mins": 96.3,
       "hybrid_p85_mins": 118.8,
       "p85_buffer_mins": 22.5,
       "traffic_delay_mins": 7.3,
-      "observed_benchmark_mins": 96.8
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -839,13 +901,13 @@
       "routes": "943DOWN",
       "distance_km": 13.7,
       "transfers": 0,
-      "static_gtfs_mins": 73.4,
+      "static_gtfs_mins": 42.2,
       "free_flow_mins": 54.6,
       "hybrid_mean_mins": 71.9,
       "hybrid_p85_mins": 84.9,
       "p85_buffer_mins": 12.9,
       "traffic_delay_mins": 17.3,
-      "observed_benchmark_mins": 71.2
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     },
     {
       "origin": "Shivaji Stadium",
@@ -855,13 +917,13 @@
       "routes": "433UP",
       "distance_km": 11.9,
       "transfers": 0,
-      "static_gtfs_mins": 60.0,
+      "static_gtfs_mins": 48.6,
       "free_flow_mins": 45.1,
       "hybrid_mean_mins": 49.4,
       "hybrid_p85_mins": 60.0,
       "p85_buffer_mins": 10.6,
       "traffic_delay_mins": 4.3,
-      "observed_benchmark_mins": 52.5
+      "baseline_source": "Static_GTFS_Schedule_Baseline"
     }
   ]
 }

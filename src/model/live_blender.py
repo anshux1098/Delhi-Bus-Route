@@ -95,8 +95,12 @@ class LiveStateTracker:
         self.catalog_lookup = self.eb_prior.catalog_info
         self.mu_tensor = self.artifacts.get("mu_tensor")
         self.sigma_tensor = self.artifacts.get("sigma_tensor")
-        cids = self.catalog_df["corridor_segment_id"].to_list()
-        self.corridor_to_idx = {cid: i for i, cid in enumerate(cids)}
+        if "_corridors_list" not in self.artifacts or "_corridor_to_idx" not in self.artifacts:
+            cids = self.catalog_df["corridor_segment_id"].to_list()
+            self.artifacts["_corridors_list"] = cids
+            self.artifacts["_corridor_to_idx"] = {cid: i for i, cid in enumerate(cids)}
+        self.corridors_list = self.artifacts["_corridors_list"]
+        self.corridor_to_idx = self.artifacts["_corridor_to_idx"]
 
         # Fitted ratio-space live kernels (Upgrade 2b/2c)
         self.gamma_self = self.artifacts.get("gamma_self", (0.75, 10.0))
@@ -331,12 +335,15 @@ class PrecomputedHorizonTable(dict):
 
     def get_segment_time(
         self,
-        corridor_segment_id: str,
+        corridor_segment_id: str | int,
         arrival_epoch: float | int,
     ) -> float:
         """O(1) linearly interpolated traversal time across adjacent 15-minute horizon bins."""
-        idx = self.corridor_to_idx.get(str(corridor_segment_id))
-        if idx is None:
+        if isinstance(corridor_segment_id, (int, np.integer)):
+            idx = int(corridor_segment_id)
+        else:
+            idx = self.corridor_to_idx.get(str(corridor_segment_id))
+        if idx is None or idx < 0 or idx >= self.matrix.shape[0]:
             return 60.0
 
         # Fractional bin position
@@ -358,12 +365,15 @@ class PrecomputedHorizonTable(dict):
 
     def get_segment_sigma(
         self,
-        corridor_segment_id: str,
+        corridor_segment_id: str | int,
         arrival_epoch: float | int,
     ) -> float:
         """O(1) linearly interpolated traversal time uncertainty sigma_e across adjacent horizon bins."""
-        idx = self.corridor_to_idx.get(str(corridor_segment_id))
-        if idx is None:
+        if isinstance(corridor_segment_id, (int, np.integer)):
+            idx = int(corridor_segment_id)
+        else:
+            idx = self.corridor_to_idx.get(str(corridor_segment_id))
+        if idx is None or idx < 0 or idx >= self.sigma_matrix.shape[0]:
             return 10.0
 
         u = (float(arrival_epoch) - self.query_epoch) / 900.0
@@ -401,19 +411,29 @@ def build_precomputed_horizon_table(
     Returns:
         PrecomputedHorizonTable dict providing O(1) get_segment_time and get_segment_sigma interpolation.
     """
-    t0 = time.time()
-    artifacts = models_artifact or load_travel_time_models()
-    catalog_df = artifacts["catalog_df"]
-    cids = catalog_df["corridor_segment_id"].to_list()
+    t0 = time.perf_counter()
+    if models_artifact is not None:
+        artifacts = models_artifact
+    elif tracker is not None and getattr(tracker, "artifacts", None) is not None:
+        artifacts = tracker.artifacts
+    else:
+        artifacts = load_travel_time_models()
+
+    if tracker is None:
+        if "_corridors_list" not in artifacts or "_corridor_to_idx" not in artifacts:
+            cids_init = artifacts["catalog_df"]["corridor_segment_id"].to_list()
+            artifacts["_corridors_list"] = cids_init
+            artifacts["_corridor_to_idx"] = {cid: i for i, cid in enumerate(cids_init)}
+        cids = artifacts["_corridors_list"]
+        corridor_to_idx = artifacts["_corridor_to_idx"]
+    else:
+        cids = tracker.corridors_list
+        corridor_to_idx = tracker.corridor_to_idx
     n_corridors = len(cids)
-    corridor_to_idx = {cid: i for i, cid in enumerate(cids)}
 
     mu_tensor = artifacts.get("mu_tensor")
     sigma_tensor = artifacts.get("sigma_tensor")
     free_flow_arr = artifacts.get("free_flow_mu")
-
-    if tracker is None:
-        tracker = LiveStateTracker(models_artifact=artifacts)
 
     # 1. Direct slice from offline precomputed 96-bin tensors without calling model.predict
     bin_epochs = query_epoch + np.arange(n_bins, dtype=np.int64) * 900
@@ -449,7 +469,7 @@ def build_precomputed_horizon_table(
         free_flow_arr = free_flow_arr[:n_corridors]
 
     # 2. Vectorized application of live anomalies if any observations are active
-    if tracker.observations:
+    if tracker is not None and tracker.observations:
         obs_indices = []
         obs_t = []
         obs_w = []
@@ -473,7 +493,7 @@ def build_precomputed_horizon_table(
             scale_mat = np.exp(alpha_mat * r_arr).astype(np.float32)
             matrix[idx_arr, :] *= scale_mat
 
-    latency = time.time() - t0
+    latency = time.perf_counter() - t0
     table = PrecomputedHorizonTable(
         query_epoch=query_epoch,
         n_bins=n_bins,

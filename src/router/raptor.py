@@ -130,8 +130,10 @@ def _raptor_scan_jit(
     best_dest_arr = 1e18
 
     for k in range(1, n_rounds + 1):
+        if k == 3 and n_direct_hits >= 2 and best_dest_arr < 1e17:
+            break
         bus_updated = np.zeros(n_stops, dtype=np.bool_)
-        prune_cutoff = best_dest_arr + 1500.0
+        prune_cutoff = best_dest_arr + 1200.0
 
         for r in range(n_routes):
             s = route_stop_offsets[r]
@@ -887,14 +889,22 @@ class CommonLinesRaptor:
 
         # Collect candidate bus-leg specifications across profiles (top 2 per profile)
         cand_specs: list[tuple[int, float, list[tuple[int, int, int]], str]] = []
+        has_direct_route = False
 
-        for prof_name, p_tcum, p_ew, p_cl, p_xfer, p_walk in profiles:
+        for p_idx, (prof_name, p_tcum, p_ew, p_cl, p_xfer, p_walk) in enumerate(profiles):
+            if p_idx == 0:
+                p_rounds = n_rounds
+            elif p_idx == 1:
+                p_rounds = min(n_rounds, 2) if has_direct_route else n_rounds
+            else:
+                p_rounds = 1 if has_direct_route else min(n_rounds, 2)
+
             tau_p = tau_init.copy()
             b_u, b_r, w_u, w_e, direct_hits, n_direct = _raptor_scan_jit(
                 tau_p,
                 marked_init,
                 dest_mask,
-                n_rounds,
+                p_rounds,
                 self.n_stops,
                 self.n_routes,
                 bucket,
@@ -911,6 +921,8 @@ class CommonLinesRaptor:
                 p_xfer,
                 p_walk,
             )
+            if n_direct > 0:
+                has_direct_route = True
 
             prof_specs: list[tuple[int, float, list[tuple[int, int, int]]]] = []
 
@@ -924,8 +936,8 @@ class CommonLinesRaptor:
                 egr_s = 0.0 if is_exact_dest else (egr_d * WALK_DETOUR_FACTOR) / WALK_SPEED_MPS
                 prof_specs.append((1, arr_t + egr_s, [(u_st, v_st, r_idx)]))
 
-            # Backtrack best k-leg journeys from destination candidates for k = 1..n_rounds
-            for k in range(1, n_rounds + 1):
+            # Backtrack best k-leg journeys from destination candidates for k = 1..p_rounds
+            for k in range(1, p_rounds + 1):
                 for dest_idx, egr_sec, _, _, _ in dest_cands:
                     if not np.isfinite(tau_p[k, dest_idx]):
                         continue
