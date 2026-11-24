@@ -68,7 +68,8 @@ def test_1_zero_fabricated_numbers_and_three_way_split_integrity() -> None:
     models, df_obs = load_artifacts()
     train_set, calib_set, test_set = get_three_way_vehicle_split(df_obs)
     n_total = len(train_set) + len(calib_set) + len(test_set)
-    assert n_total == 5555
+    assert n_total == df_obs["vehicle_id"].n_unique()
+    assert n_total >= 5555
     assert abs(len(train_set) / n_total - 0.60) < 0.005
     assert abs(len(calib_set) / n_total - 0.20) < 0.005
     assert abs(len(test_set) / n_total - 0.20) < 0.005

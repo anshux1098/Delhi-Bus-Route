@@ -1,6 +1,6 @@
 """Delhi GTFS-Realtime Live Collector.
 
-Polls OTD_RT_URL (or fallback TRANSPORT_STACK_API_URL) periodically:
+Polls TRANSPORT_STACK_API_URL (with automatic fallback to OTD_RT_URL) periodically:
 1. Atomically updates data/live_buffer/latest_vehicles.parquet on every poll.
 2. Tracks last_seen_ts per vehicle_id in memory to buffer only genuinely new GPS updates.
 3. Every 30 polls (~5 minutes), flushes accumulated unique pings to
@@ -90,32 +90,41 @@ def compute_ist_time(ts: int | None) -> str | None:
         return None
 
 
-def fetch_gtfs_rt(client: httpx.Client, otd_url: str, stack_url: str, stack_key: str) -> bytes:
-    """Fetch protobuf payload from primary or fallback feed URL."""
+def fetch_gtfs_rt(client: httpx.Client, otd_url: str, stack_url: str, stack_key: str) -> tuple[bytes, str]:
+    """Fetch protobuf payload from TRANSPORT_STACK_API_URL (primary) or OTD_RT_URL (fallback)."""
     headers = {"User-Agent": "delhi-transit-planner/0.1 (live-collector)"}
 
-    # 1. Primary: OTD_RT_URL
+    has_valid_stack = (
+        bool(stack_url)
+        and "PASTE_" not in stack_url
+        and bool(stack_key)
+        and "PASTE_" not in stack_key
+        and "your_" not in stack_key.lower()
+    )
+
+    # 1. Primary: TRANSPORT_STACK_API_URL
+    if has_valid_stack:
+        stack_headers = dict(headers)
+        stack_headers["x-api-key"] = stack_key
+        try:
+            resp = client.get(stack_url, headers=stack_headers)
+            resp.raise_for_status()
+            if len(resp.content) > 1000 and not resp.content.startswith(b"<!doctype"):
+                return resp.content, "PRIMARY: Transport Stack"
+            print(f"[WARN] Primary Transport Stack returned non-protobuf ({len(resp.content)} bytes). Falling back to OTD_RT_URL...")
+        except Exception as exc:
+            print(f"[WARN] Primary Transport Stack poll error: {exc}. Falling back to OTD_RT_URL...")
+
+    # 2. Fallback: OTD_RT_URL
     if otd_url and "PASTE_" not in otd_url:
         try:
             resp = client.get(otd_url, headers=headers)
             resp.raise_for_status()
             if len(resp.content) > 1000 and not resp.content.startswith(b"<!doctype"):
-                return resp.content
+                return resp.content, "FALLBACK: OTD_RT_URL"
+            print(f"[WARN] Fallback OTD returned non-protobuf ({len(resp.content)} bytes).")
         except Exception as exc:
-            print(f"[WARN] Primary OTD poll error: {exc}")
-
-    # 2. Fallback: TRANSPORT_STACK_API_URL
-    if stack_url and "PASTE_" not in stack_url:
-        stack_headers = dict(headers)
-        if stack_key and "PASTE_" not in stack_key:
-            stack_headers["x-api-key"] = stack_key
-        try:
-            resp = client.get(stack_url, headers=stack_headers)
-            resp.raise_for_status()
-            if len(resp.content) > 1000 and not resp.content.startswith(b"<!doctype"):
-                return resp.content
-        except Exception as exc:
-            print(f"[WARN] Fallback Transport Stack poll error: {exc}")
+            print(f"[WARN] Fallback OTD poll error: {exc}")
 
     raise RuntimeError("Could not fetch GTFS-Realtime payload from any configured source.")
 
@@ -126,6 +135,8 @@ def parse_vehicle_positions(payload: bytes) -> tuple[int, list[dict[str, Any]]]:
     feed.ParseFromString(payload)
 
     feed_ts = int(feed.header.timestamp) if feed.header.HasField("timestamp") else 0
+    default_ts = feed_ts if feed_ts > 0 else 0
+    ts_cache: dict[int, str | None] = {0: None}
     rows: list[dict[str, Any]] = []
 
     for entity in feed.entity:
@@ -133,19 +144,25 @@ def parse_vehicle_positions(payload: bytes) -> tuple[int, list[dict[str, Any]]]:
             continue
 
         vehicle = entity.vehicle
-        pos = vehicle.position if vehicle.HasField("position") else None
-
-        lat = float(pos.latitude) if (pos and pos.HasField("latitude") and math.isfinite(pos.latitude)) else None
-        lon = float(pos.longitude) if (pos and pos.HasField("longitude") and math.isfinite(pos.longitude)) else None
-        bearing = float(pos.bearing) if (pos and pos.HasField("bearing") and math.isfinite(pos.bearing)) else None
-        speed = float(pos.speed) if (pos and pos.HasField("speed") and math.isfinite(pos.speed)) else None
+        if vehicle.HasField("position"):
+            pos = vehicle.position
+            lat = float(pos.latitude) if (pos.HasField("latitude") and math.isfinite(pos.latitude)) else None
+            lon = float(pos.longitude) if (pos.HasField("longitude") and math.isfinite(pos.longitude)) else None
+            bearing = float(pos.bearing) if (pos.HasField("bearing") and math.isfinite(pos.bearing)) else None
+            speed = float(pos.speed) if (pos.HasField("speed") and math.isfinite(pos.speed)) else None
+        else:
+            lat = lon = bearing = speed = None
 
         vid = vehicle.vehicle.id or vehicle.vehicle.label or entity.id or None
-        route_id = vehicle.trip.route_id if (vehicle.HasField("trip") and vehicle.trip.route_id) else None
-        trip_id = vehicle.trip.trip_id if (vehicle.HasField("trip") and vehicle.trip.trip_id) else None
+        has_trip = vehicle.HasField("trip")
+        route_id = vehicle.trip.route_id if (has_trip and vehicle.trip.route_id) else None
+        trip_id = vehicle.trip.trip_id if (has_trip and vehicle.trip.trip_id) else None
 
-        ts = int(vehicle.timestamp) if vehicle.timestamp > 0 else (feed_ts if feed_ts > 0 else 0)
-        ist_time = compute_ist_time(ts)
+        ts = int(vehicle.timestamp) if vehicle.timestamp > 0 else default_ts
+        ist_time = ts_cache.get(ts)
+        if ist_time is None and ts > 0:
+            ist_time = compute_ist_time(ts)
+            ts_cache[ts] = ist_time
 
         rows.append({
             "vehicle_id": str(vid) if vid is not None else None,
@@ -190,9 +207,9 @@ def flush_historical_buffer(buffer: list[dict[str, Any]], out_dir: Path) -> Path
 def run_collector(poll_interval: int = 10, flush_every: int = 30, once: bool = False) -> None:
     """Fault-tolerant GTFS-Realtime polling collector."""
     if ENV_PATH.exists():
-        load_dotenv(ENV_PATH)
+        load_dotenv(ENV_PATH, override=True)
     else:
-        load_dotenv()
+        load_dotenv(override=True)
 
     otd_url = os.getenv("OTD_RT_URL", "").strip()
     stack_url = os.getenv("TRANSPORT_STACK_API_URL", "").strip()
@@ -225,7 +242,7 @@ def run_collector(poll_interval: int = 10, flush_every: int = 30, once: bool = F
 
             # 1. Fetch & parse payload with try/except
             try:
-                payload = fetch_gtfs_rt(client, otd_url, stack_url, stack_key)
+                payload, feed_source = fetch_gtfs_rt(client, otd_url, stack_url, stack_key)
                 feed_ts, rows = parse_vehicle_positions(payload)
             except Exception as exc:
                 print(f"[{ist_str}] [WARN] Poll #{poll_count} failed: {exc}")
@@ -235,7 +252,7 @@ def run_collector(poll_interval: int = 10, flush_every: int = 30, once: bool = F
                 continue
 
             if not rows:
-                print(f"[{ist_str}] [WARN] Poll #{poll_count}: Feed contained 0 vehicle entities.")
+                print(f"[{ist_str}] [WARN] Poll #{poll_count} [{feed_source}]: Feed contained 0 vehicle entities.")
             else:
                 # 2. Convert active vehicles to DataFrame and write to live_buffer atomically
                 current_df = pl.DataFrame(rows, schema=VEHICLE_SCHEMA, strict=False).select(COL_ORDER)
@@ -253,7 +270,7 @@ def run_collector(poll_interval: int = 10, flush_every: int = 30, once: bool = F
                         new_pings += 1
 
                 print(
-                    f"[{ist_str}] Poll #{poll_count}: {current_df.height:,} active buses, "
+                    f"[{ist_str}] Poll #{poll_count} [{feed_source}]: {current_df.height:,} active buses, "
                     f"{new_pings:,} new pings buffered (total buffered: {len(historical_buffer):,})"
                 )
 

@@ -47,17 +47,17 @@ Delhi's real-time transit telemetry is characterized by dense GPS noise, urban c
 - This pools `86,326` route-specific stop pairs onto **`15,130` unique physical corridor segments**, increasing observation density by **5.7x**.
 
 ### 2.2 Three-Way Deterministic Vehicle Split (`60% Train / 20% Calib / 20% Test`)
-- Unique `vehicle_id`s (`5,555` total vehicles) are partitioned deterministically into three disjoint sets:
-  - **`train_vehicles` (`60%`, `3,333` vehicles)**: Builds the Leave-One-Out (LOO) Empirical Bayes prior (`train_eb_prior`, shrinkage $k = 5.0$) and trains the 400-tree Gamma-LightGBM expected time regressor and 300-tree Ratio Quantile ($\alpha = 0.85$) model using `sample_weight = span_weight * 5.0`.
-  - **`calib_vehicles` (`20%`, `1,111` vehicles)**: Fits the post-hoc mean calibration scalar (`calibration_factor = 1.0120`) so `calib` bias is `1.0000`, and calibrates the journey-level P85 scalar (`kappa = 0.930`) to hit `85.0%` multi-stop coverage.
-  - **`test_vehicles` (`20%`, `1,111` vehicles, `24,053` segments, `1,488` multi-stop trips with $K \ge 4$)**: Strictly untouched held-out test split used exclusively for final evaluation (`held_out_segment_bias_ratio = 0.9979`, `held_out_segment_p85_coverage_pct = 83.44%`, baseline verification `84.11%`).
+- Unique `vehicle_id`s (`6,166` total vehicles) are partitioned deterministically into three disjoint sets:
+  - **`train_vehicles` (`60%`, `3,699` vehicles)**: Builds the Leave-One-Out (LOO) Empirical Bayes prior (`train_eb_prior`, shrinkage $k = 5.0$) and trains the 400-tree Gamma-LightGBM expected time regressor and 300-tree Ratio Quantile ($\alpha = 0.88$ on real traversals) model using `sample_weight = span_weight * 5.0`.
+  - **`calib_vehicles` (`20%`, `1,233` vehicles)**: Fits the post-hoc mean calibration scalar (`calibration_factor = 0.9977`) so `calib` bias is `1.0000`, and calibrates the journey-level P85 scalar (`kappa = 0.950`) to hit `85.0%` multi-stop coverage.
+  - **`test_vehicles` (`20%`, `1,234` vehicles, `60,365` segments, `3,423` multi-stop trips with $K \ge 4$)**: Strictly untouched held-out test split used exclusively for final evaluation (`held_out_segment_bias_ratio = 1.0046`, `held_out_segment_p85_coverage_pct = 84.50%`, baseline verification `84.11%`).
 
 ### 2.3 Fitted Ratio-Space Live Kernels (`gamma_self` & `gamma_cross`)
 - On `train + calib`, we fit two mean-unbiased ratio-space exponential decay kernels $\gamma(\Delta t) = \gamma_0 \exp(-\Delta t / \tau)$:
   $$\hat{y}_m = \hat{\mu}_m \left[1 + w \cdot \gamma_0 \exp(-\Delta t / \tau) (q_0 - 1)\right], \qquad q_0 = \frac{y_0}{\hat{\mu}_0}$$
-  - **Cross-Vehicle Corridor Kernel (`gamma_cross = (0.10, 5.0m)`)**: Captures corridor congestion reported by *other* vehicles in the last 45 minutes (`Stage 4a (cross-vehicle)`).
-  - **Same-Vehicle Upstream Kernel (`gamma_self = (0.3892, 60.0m)`)**: Captures causal upstream pace anomalies of the *same* tracked bus (`Stage 4b (same-vehicle)`).
-- **Precomputed Horizon Tensor (`live_blender.py`)**: The 96-bin 3D tensor (`15,130` corridors $\times$ `96` bins $\times$ `2` day types) is sliced across 12 horizon bins in **`2.82 ms` median** (`19.92 ms` baseline verification, target `< 50 ms`).
+  - **Cross-Vehicle Corridor Kernel (`gamma_cross = (0.1, 5.0m)`)**: Captures corridor congestion reported by *other* vehicles in the last 45 minutes (`Stage 4a (cross-vehicle)`).
+  - **Same-Vehicle Upstream Kernel (`gamma_self = (0.3993, 20.0m)`)**: Captures causal upstream pace anomalies of the *same* tracked bus (`Stage 4b (same-vehicle)`).
+- **Precomputed Horizon Tensor (`live_blender.py`)**: The 96-bin 3D tensor (`15,130` corridors $\times$ `96` bins $\times$ `2` day types) is sliced across 12 horizon bins in **`2.25 ms` median** (`19.92 ms` baseline verification, target `< 50 ms`).
 
 > [!WARNING]
 > **Telemetry Provenance & Diurnal Prior Disclosure (Audit Fix 0.8)**: Historical GPS observations in `data/historical/` were captured on Saturday (`day_of_week = 5`, hours `12:00–12:59` and `20:00–20:59` IST). Spatial corridor base speeds are learned from observed telemetry, while weekday peak (`08:30`) vs. night (`23:00`) contrasts reflect the explicit diurnal prior (`get_diurnal_multiplier`), pending weekday peak telemetry capture.
@@ -68,7 +68,7 @@ Delhi's real-time transit telemetry is characterized by dense GPS noise, urban c
 
 ### 3.1 Chriqui-Robillard Common-Lines & Correlated Variance
 - **Attractive Route Sets $A(u, v)$**: Pools overlapping routes sharing a corridor using Welding/Osuna headway regularity $E[W_r] = \frac{1}{2}E[H_r](1 + CV_r^2)$ and live upstream bus ETAs.
-- **$O(1)$ Correlated Subpath Variance**: Precomputed route prefix arrays ($T_{\text{cum}}, S_1, S_2$) evaluate subpath variance in $O(1)$ time (`rho_unclipped = 0.376` on test trips, router parameter `rho = 0.600`):
+- **$O(1)$ Correlated Subpath Variance**: Precomputed route prefix arrays ($T_{\text{cum}}, S_1, S_2$) evaluate subpath variance in $O(1)$ time (`rho_unclipped = 0.364` on test trips, router parameter `rho = 0.600`):
   $$V(i \to j) = (1 - \rho)(S_2[j] - S_2[i]) + \rho(S_1[j] - S_1[i])^2, \qquad q_{85, J} = \mu_J \exp\left(-0.5 s_J^2 + \kappa s_J\right)$$
 
 ### 3.2 3-Profile Numba RAPTOR Scan (`raptor.py`)
@@ -83,15 +83,15 @@ Delhi's real-time transit telemetry is characterized by dense GPS noise, urban c
 
 ---
 
-## 4. Verified 5-Stage Out-of-Fold Ablation Summary (`1,488` Untouched Test Trips)
+## 4. Verified 5-Stage Out-of-Fold Ablation Summary (`3,423` Untouched Test Trips)
 
 | Stage | Architecture Description | MAE (sec) | MAE (mins) | MAPE (%) | RMSE (sec) | Mean Bias Ratio | P85 Empirical Coverage |
 | :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| **Stage 1** | Baseline 1: Raw Static GTFS Timetable (stop_times.txt Schedule) | 292.4s | 4.87m | 25.38% | 427.0s | 1.1162 | — |
-| **Stage 2** | Stage 2: Out-of-Fold Empirical Bayes Corridor Profile Only | 180.4s | 3.01m | 16.53% | 257.7s | 1.0262 | — |
-| **Stage 3** | Stage 3: + OOF Calibrated 400-Tree Gamma-LightGBM | 159.7s | 2.66m | 14.57% | 240.1s | 1.0116 | — |
-| **Stage 4a (cross-vehicle)** | Stage 4a (cross-vehicle): + Cross-Vehicle Ratio Live Kernel (gamma_cross) | 158.6s | 2.64m | 14.46% | 238.8s | 1.0092 | **85.8%** |
-| **Stage 4b (same-vehicle)** | Stage 4b (same-vehicle): + Same-Vehicle Causal Ratio Live Kernel (gamma_self) | 156.9s | 2.61m | 14.15% | 236.3s | 1.0097 | **86.1%** |
+| **Stage 1** | Baseline 1: Raw Static GTFS Timetable (stop_times.txt Schedule) | 349.1s | 5.82m | 28.68% | 529.6s | 1.1605 | — |
+| **Stage 2** | Stage 2: Out-of-Fold Empirical Bayes Corridor Profile Only | 180.9s | 3.02m | 16.69% | 270.6s | 1.0169 | — |
+| **Stage 3** | Stage 3: + OOF Calibrated 400-Tree Gamma-LightGBM | 168.2s | 2.80m | 15.36% | 258.8s | 1.0119 | — |
+| **Stage 4a (cross-vehicle)** | Stage 4a (cross-vehicle): + Cross-Vehicle Ratio Live Kernel (gamma_cross) | 167.2s | 2.79m | 15.27% | 257.4s | 1.0101 | **88.4%** |
+| **Stage 4b (same-vehicle)** | Stage 4b (same-vehicle): + Same-Vehicle Causal Ratio Live Kernel (gamma_self) | 164.5s | 2.74m | 14.89% | 253.5s | 1.0109 | **89.1%** |
 
-- **Total Error Reduction (`Stage 1 -> Stage 4b`)**: **`46.3%` MAE reduction** (`292.4s` $\to$ `156.9s`) and **`44.7%` RMSE reduction** (`427.0s` $\to$ `236.3s`).
-- **Span-Level Ground Truth (`5,000` raw test ping-pairs)**: **`24.3s` MAE**, **`76.0s` RMSE**, **`34.4%` MAPE**, and **`0.9798` Mean Bias Ratio**.
+- **Total Error Reduction (`Stage 1 -> Stage 4b`)**: **`52.9%` MAE reduction** (`349.1s` $\to$ `164.5s`) and **`52.1%` RMSE reduction** (`529.6s` $\to$ `253.5s`).
+- **Span-Level Ground Truth (`5,000` raw test ping-pairs)**: **`23.7s` MAE**, **`65.9s` RMSE**, **`34.9%` MAPE**, and **`0.9858` Mean Bias Ratio**.

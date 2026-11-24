@@ -612,12 +612,14 @@ def train_travel_time_models(
         f"{np.sum(raw_calib_pred * calibration_factor) / sum_actual_calib:.4f})"
     )
 
-    # 2. Model 2: Ratio Quantile Model (alpha=0.85, 300 trees, Audit Fix 1a)
-    print("\nTraining Model 2 (P85 Ratio Quantile Model — alpha=0.85, 300 trees on r_i = y_i / mu_oof)...")
+    # 2. Model 2: Ratio Quantile Model (real observations only, calibrated alpha=0.88)
+    print("\nTraining Model 2 (P85 Ratio Quantile Model — alpha=0.88 on real r_i = y_i / mu_oof)...")
     t2 = time.time()
+    X_real_train = real_train_df.select(FEATURE_COLS).to_numpy()
+    w_real_train = real_train_df["sample_weight"].to_numpy().astype(np.float64)
     model_p90 = lgb.LGBMRegressor(
         objective="quantile",
-        alpha=0.85,
+        alpha=0.88,
         n_estimators=300,
         learning_rate=0.05,
         num_leaves=63,
@@ -625,7 +627,7 @@ def train_travel_time_models(
         n_jobs=-1,
         verbose=-1,
     )
-    model_p90.fit(X_train, r_train, sample_weight=w_train)
+    model_p90.fit(X_real_train, r_real_train, sample_weight=w_real_train)
     print(f"[OK] Model 2 trained in {time.time() - t2:.2f}s")
 
     # 3. Validation / Test Metrics on Untouched 20% Test Split
@@ -960,7 +962,7 @@ def main() -> int:
 
     # 1. Ingest observed segments and build EB prior
     if not OBSERVED_SEGMENTS_PATH.exists():
-        obs_df = consolidate_observed_segments()
+        obs_df, _ = consolidate_observed_segments()
     else:
         obs_df = pl.read_parquet(OBSERVED_SEGMENTS_PATH)
 

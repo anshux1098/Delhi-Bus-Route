@@ -1,304 +1,586 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Delhi Transit Planner — Time-Dependent Common-Lines RAPTOR</title>
+  <title>Delhi Transit Engine — Time-Dependent Common-Lines RAPTOR</title>
   <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- MapLibre GL JS -->
   <link href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" rel="stylesheet" />
   <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-  <!-- Google Fonts: Inter -->
+  <!-- Google Fonts: Instrument Sans & IBM Plex Mono -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; }
-    .font-mono { font-family: 'JetBrains Mono', monospace; }
-    /* Custom scrollbar */
-    ::-webkit-scrollbar { width: 6px; }
-    ::-webkit-scrollbar-track { background: #0f172a; }
-    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
-    ::-webkit-scrollbar-thumb:hover { background: #475569; }
-    /* Pulsing radar animation */
-    @keyframes pulse-ring {
-      0% { transform: scale(0.95); opacity: 0.8; }
-      50% { transform: scale(1.4); opacity: 0; }
-      100% { transform: scale(0.95); opacity: 0; }
+    :root, [data-theme="light"] {
+      --bg-canvas: #F5F3EE;
+      --bg-surface: #FFFFFF;
+      --bg-subtle: #ECE9E1;
+      --bg-elevated: rgba(255, 255, 255, 0.96);
+      --bg-input: #FAF9F6;
+      --ink-primary: #111315;
+      --ink-secondary: #4A5058;
+      --ink-muted: #7C828B;
+      --border-hairline: #DFDCD3;
+      --border-strong: #C5C0B4;
+      --accent-primary: #0B6E5B;
+      --accent-primary-hover: #085748;
+      --accent-primary-tint: #E5F3F0;
+      --accent-secondary: #C84B1B;
+      --accent-secondary-tint: #FCEEE8;
+      --route-single: #1E4E8C;
+      --route-single-tint: #EBF1F9;
+      --status-free: #0E835C;
+      --status-delay: #C2740C;
+      --status-jam: #C92A2A;
+      --shadow-card: 0 10px 30px -10px rgba(17, 19, 21, 0.10), 0 2px 6px -1px rgba(17, 19, 21, 0.05);
+      --shadow-sm: 0 1px 3px rgba(17, 19, 21, 0.06);
+      --casing-color: #FFFFFF;
     }
-    .pulse-dot::before {
-      content: '';
-      position: absolute;
-      left: -4px; top: -4px;
-      width: 16px; height: 16px;
+
+    [data-theme="dark"] {
+      --bg-canvas: #0B0C0E;
+      --bg-surface: #131519;
+      --bg-subtle: #1B1E24;
+      --bg-elevated: rgba(19, 21, 25, 0.95);
+      --bg-input: #0E1013;
+      --ink-primary: #F2F4F7;
+      --ink-secondary: #9EA5B1;
+      --ink-muted: #68707C;
+      --border-hairline: #252932;
+      --border-strong: #373D49;
+      --accent-primary: #19A98D;
+      --accent-primary-hover: #148F77;
+      --accent-primary-tint: rgba(25, 169, 141, 0.14);
+      --accent-secondary: #E86A38;
+      --accent-secondary-tint: rgba(232, 106, 56, 0.15);
+      --route-single: #4C8CE6;
+      --route-single-tint: rgba(76, 140, 230, 0.15);
+      --status-free: #19A98D;
+      --status-delay: #E59524;
+      --status-jam: #E5484D;
+      --shadow-card: 0 16px 36px -10px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.35);
+      --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
+      --casing-color: #0B0C0E;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Instrument Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: var(--bg-canvas);
+      color: var(--ink-primary);
+      margin: 0;
+    }
+    .font-mono, .tabular {
+      font-family: 'IBM Plex Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+
+    /* Surface utilities */
+    .surface-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-sm);
+    }
+    .surface-floating {
+      background-color: var(--bg-elevated);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-hairline);
+      box-shadow: var(--shadow-card);
+    }
+    .surface-subtle {
+      background-color: var(--bg-subtle);
+    }
+    .input-field {
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-hairline);
+      color: var(--ink-primary);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .input-field:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px var(--accent-primary-tint);
+    }
+    .input-field::placeholder {
+      color: var(--ink-muted);
+    }
+
+    /* Hatched P85 Uncertainty Tail Bar */
+    .p85-hatch {
+      background-image: repeating-linear-gradient(
+        -45deg,
+        var(--accent-primary),
+        var(--accent-primary) 2px,
+        transparent 2px,
+        transparent 5px
+      );
+      opacity: 0.55;
+    }
+
+    /* Range slider for 24-hour departure scrubber */
+    input[type="range"].time-scrubber {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      background: var(--border-hairline);
+      border-radius: 2px;
+      outline: none;
+    }
+    input[type="range"].time-scrubber::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
-      background: #10b981;
-      animation: pulse-ring 2s cubic-bezier(0.215, 0.61, 0.355, 1) infinite;
+      background: var(--accent-primary);
+      border: 2px solid var(--bg-surface);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+
+    /* MapLibre popup theming */
+    .maplibregl-popup-content {
+      background: var(--bg-surface) !important;
+      color: var(--ink-primary) !important;
+      border: 1px solid var(--border-hairline) !important;
+      border-radius: 8px !important;
+      box-shadow: var(--shadow-card) !important;
+      padding: 10px 12px !important;
+      font-family: 'Instrument Sans', sans-serif !important;
+    }
+    .maplibregl-popup-tip {
+      border-top-color: var(--bg-surface) !important;
+      border-bottom-color: var(--bg-surface) !important;
+    }
+    .maplibregl-ctrl-group {
+      background: var(--bg-surface) !important;
+      border: 1px solid var(--border-hairline) !important;
+      box-shadow: var(--shadow-sm) !important;
+    }
+    [data-theme="dark"] .maplibregl-ctrl-icon {
+      filter: invert(0.9);
+    }
+    /* Dark mode filter on zero-key OSM canvas; Light mode uses native WebGL raster-saturation so vector overlays stay vivid */
+    [data-theme="dark"] #map canvas.maplibregl-canvas {
+      filter: invert(0.92) hue-rotate(180deg) saturate(0.75) contrast(1.05) brightness(0.92);
+    }
+
+    /* Shimmer skeleton animation */
+    @keyframes shimmer {
+      0% { opacity: 0.45; }
+      50% { opacity: 0.85; }
+      100% { opacity: 0.45; }
+    }
+    .skeleton-pulse {
+      animation: shimmer 1.4s ease-in-out infinite;
+      background-color: var(--bg-subtle);
     }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-100 h-screen flex flex-col overflow-hidden antialiased">
+<body class="h-screen flex flex-col overflow-hidden antialiased select-none">
 
-  <!-- Top Navbar -->
-  <header class="h-14 bg-slate-900 border-b border-slate-800 px-4 flex items-center justify-between z-30 shrink-0">
+  <!-- Editorial Top Bar -->
+  <header class="h-13 px-4 flex items-center justify-between z-30 shrink-0" style="background-color: var(--bg-surface); border-bottom: 1px solid var(--border-hairline); height: 52px;">
+    <!-- Brand Identity -->
     <div class="flex items-center space-x-3">
-      <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-        <svg class="w-5 h-5 text-slate-950" fill="currentColor" viewBox="0 0 24 24">
-          <path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/>
-        </svg>
+      <div class="w-8 h-8 rounded flex items-center justify-center font-mono font-semibold text-xs tracking-tighter" style="background-color: var(--accent-primary); color: #FFFFFF;">
+        DT
       </div>
-      <div>
-        <h1 class="text-sm font-bold tracking-tight bg-gradient-to-r from-emerald-400 via-teal-300 to-cyan-400 bg-clip-text text-transparent">
-          DELHI TRANSIT PLANNER
+      <div class="flex items-baseline space-x-2.5">
+        <h1 class="text-sm font-bold tracking-tight" style="color: var(--ink-primary);">
+          DELHI TRANSIT ENGINE
         </h1>
-        <p class="text-[10px] text-slate-400 font-medium">Common-Lines RAPTOR &bull; Live Anomaly Blender &bull; P85 Uncertainty Buffer</p>
+        <span class="hidden md:inline-block text-[11px] font-mono" style="color: var(--ink-muted);">
+          NCT &bull; 2,554 ROUTES &bull; 6,812 STOPS &bull; 15,130 CORRIDORS
+        </span>
       </div>
     </div>
 
-    <!-- Live Status Indicators -->
-    <div class="flex items-center space-x-4 text-xs">
-      <div class="hidden sm:flex items-center space-x-2 bg-slate-800/80 px-3 py-1 rounded-full border border-slate-700/60">
-        <span class="relative flex h-2 w-2">
-          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-        </span>
-        <span id="liveBusesCount" class="text-slate-300 font-mono font-medium">2,693</span>
-        <span class="text-slate-500">Live Buses</span>
+    <!-- Telemetry & Actions -->
+    <div class="flex items-center space-x-2.5 text-xs">
+      <!-- Live Fleet Pill -->
+      <div class="hidden sm:flex items-center space-x-2 px-2.5 py-1 rounded" style="background-color: var(--bg-subtle); border: 1px solid var(--border-hairline);">
+        <span class="w-2 h-2 rounded-full" style="background-color: var(--status-free);"></span>
+        <span id="liveBusesCount" class="font-mono font-semibold" style="color: var(--ink-primary);">3,860</span>
+        <span class="text-[11px]" style="color: var(--ink-secondary);">Active Buses</span>
       </div>
-      <div class="hidden md:flex items-center space-x-1.5 text-slate-400">
-        <span class="text-slate-500">Network:</span>
-        <span class="text-slate-200 font-mono">6,812</span> stops &bull;
-        <span class="text-slate-200 font-mono">2,554</span> routes &bull;
-        <span class="text-slate-200 font-mono">15,130</span> corridors
+
+      <!-- RAPTOR Latency Readout -->
+      <div id="routingLatencyBadge" class="hidden sm:block font-mono text-[11px] px-2.5 py-1 rounded" style="background-color: var(--accent-primary-tint); color: var(--accent-primary); font-weight: 600;">
+        RAPTOR: 43.1ms
       </div>
-      <div id="routingLatencyBadge" class="hidden sm:block font-mono text-[11px] bg-cyan-950/60 text-cyan-400 px-2.5 py-0.5 rounded border border-cyan-800/60">
-        RAPTOR: ~43ms
-      </div>
+
+      <!-- Diurnal Peak vs Night Compare Trigger -->
+      <button onclick="runDiurnalCompare()" title="Compare 08:30 AM Peak vs 23:00 Night for current stops" class="hidden lg:inline-flex items-center space-x-1.5 px-2.5 py-1 rounded text-xs font-medium transition cursor-pointer" style="background-color: var(--bg-subtle); border: 1px solid var(--border-hairline); color: var(--ink-primary);">
+        <svg class="w-3.5 h-3.5" style="color: var(--accent-secondary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/>
+        </svg>
+        <span>Peak vs. Night Delta</span>
+      </button>
+
+      <!-- Engineering Masterclass Link (/learn) -->
+      <a href="/learn" class="inline-flex items-center space-x-1.5 px-3 py-1 rounded text-xs font-semibold transition whitespace-nowrap" style="background-color: var(--ink-primary); color: var(--bg-surface);">
+        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/>
+        </svg>
+        <span>Engineering Masterclass (/learn)</span>
+      </a>
+
+      <!-- Theme Switch (Cartographic Light / Control-Room Dark) -->
+      <button id="themeToggleBtn" onclick="toggleTheme()" title="Switch Cartographic Light / Dark Theme" class="w-8 h-8 rounded flex items-center justify-center transition cursor-pointer" style="background-color: var(--bg-subtle); border: 1px solid var(--border-hairline); color: var(--ink-primary);">
+        <svg id="themeIconSun" class="w-4 h-4 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/>
+        </svg>
+        <svg id="themeIconMoon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/>
+        </svg>
+      </button>
     </div>
   </header>
 
-  <!-- Main Content Layout -->
+  <!-- Main Workspace: Full-Bleed Map + Floating Command Sheet -->
   <div class="flex-1 flex overflow-hidden relative">
 
-    <!-- Left Sidebar: Planner Controls & Results -->
-    <aside class="w-full md:w-[460px] lg:w-[490px] h-full bg-slate-900/95 backdrop-blur border-r border-slate-800 flex flex-col z-20 shrink-0">
-      
-      <!-- Input Controls Section -->
-      <div class="p-4 border-b border-slate-800/80 space-y-3 shrink-0 bg-slate-900/60">
-        
-        <!-- Benchmark Presets Bar -->
-        <div>
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="text-[11px] font-semibold uppercase tracking-wider text-slate-400 flex items-center">
-              <svg class="w-3.5 h-3.5 mr-1 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-              </svg>
-              Judge Benchmark Presets
-            </span>
-          </div>
-          <div class="grid grid-cols-2 gap-1.5">
-            <button onclick="loadPreset('preset_kg_np', '08:30')" class="px-2 py-1.5 text-left text-xs bg-slate-800 hover:bg-slate-700/80 border border-slate-700/60 rounded-md transition group">
-              <div class="font-semibold text-slate-200 group-hover:text-emerald-400 truncate">1. KG &rarr; Nehru Place</div>
-              <div class="text-[10px] text-slate-400 truncate">08:30 AM Peak vs 11:00 PM</div>
-            </button>
-            <button onclick="loadPreset('preset_av_cp', '09:00')" class="px-2 py-1.5 text-left text-xs bg-slate-800 hover:bg-slate-700/80 border border-slate-700/60 rounded-md transition group">
-              <div class="font-semibold text-slate-200 group-hover:text-cyan-400 truncate">2. Anand Vihar &rarr; CP</div>
-              <div class="text-[10px] text-slate-400 truncate">09:00 AM Vikas Marg Hub</div>
-            </button>
-            <button onclick="loadPreset('preset_rohini_aiims', '08:45')" class="px-2 py-1.5 text-left text-xs bg-slate-800 hover:bg-slate-700/80 border border-slate-700/60 rounded-md transition group">
-              <div class="font-semibold text-slate-200 group-hover:text-teal-400 truncate">3. Rohini &rarr; AIIMS</div>
-              <div class="text-[10px] text-slate-400 truncate">08:45 AM Ring Rd Express</div>
-            </button>
-            <button onclick="loadPreset('preset_dwarka_ito', '09:15')" class="px-2 py-1.5 text-left text-xs bg-slate-800 hover:bg-slate-700/80 border border-slate-700/60 rounded-md transition group">
-              <div class="font-semibold text-slate-200 group-hover:text-indigo-400 truncate">4. Dwarka &rarr; ITO</div>
-              <div class="text-[10px] text-slate-400 truncate">09:15 AM Radial Arterial</div>
-            </button>
-          </div>
-        </div>
+    <!-- Left Command & Itinerary Sheet -->
+    <aside id="plannerSheet" class="w-full md:w-[440px] lg:w-[460px] h-full flex flex-col z-20 shrink-0 transition-transform duration-200" style="background-color: var(--bg-surface); border-right: 1px solid var(--border-hairline);">
 
-        <!-- Origin & Destination Inputs -->
-        <div class="space-y-2 relative">
-          <!-- Origin -->
+      <!-- Search & Departure Controls -->
+      <div class="p-4 space-y-3 shrink-0" style="border-bottom: 1px solid var(--border-hairline);">
+
+        <!-- Origin / Destination Schematic Input Box -->
+        <div class="relative space-y-2">
+          <!-- Vertical connector line between Origin and Destination dots -->
+          <div class="absolute left-[15px] top-[22px] bottom-[22px] w-px border-l border-dashed pointer-events-none z-10" style="border-color: var(--border-strong);"></div>
+
+          <!-- Origin Input -->
           <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20"></span>
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+              <span class="w-2.5 h-2.5 rounded-full border-2" style="border-color: var(--accent-primary); background-color: var(--bg-surface);"></span>
             </div>
-            <input type="text" id="originInput" placeholder="Origin stop name, ID, or click map..."
-              class="w-full pl-9 pr-9 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 transition"
-              autocomplete="off" oninput="handleStopAutocomplete('originInput', 'originDropdown')" />
-            <button onclick="clearInput('originInput')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-500 hover:text-slate-300">
+            <input type="text" id="originInput" placeholder="Origin stop, ID, or lat,lon..."
+              class="input-field w-full pl-8 pr-14 py-2 text-xs rounded-md font-medium"
+              autocomplete="off"
+              oninput="handleStopAutocomplete('originInput', 'originDropdown')"
+              onkeydown="handleAutocompleteKeydown(event, 'originInput', 'originDropdown')" />
+            <button onclick="clearInput('originInput')" title="Clear origin" class="absolute inset-y-0 right-7 pr-2 flex items-center text-sm cursor-pointer" style="color: var(--ink-muted);">
               &times;
             </button>
-            <div id="originDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl max-h-52 overflow-y-auto z-50"></div>
+            <div id="originDropdown" class="hidden absolute top-full left-0 right-0 mt-1 rounded-md max-h-56 overflow-y-auto z-50 surface-floating"></div>
           </div>
 
-          <!-- Swap Button -->
-          <button onclick="swapOriginDest()" class="absolute right-3 top-8 z-10 w-6 h-6 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-200 transition shadow">
+          <!-- Swap Origin / Destination Button -->
+          <button onclick="swapOriginDest()" title="Swap origin and destination" class="absolute right-1.5 top-1/2 -translate-y-1/2 z-20 w-7 h-7 rounded flex items-center justify-center transition cursor-pointer surface-card hover:opacity-80" style="color: var(--ink-secondary);">
             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4"/>
             </svg>
           </button>
 
-          <!-- Destination -->
+          <!-- Destination Input -->
           <div class="relative">
-            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <span class="w-2.5 h-2.5 rounded-full bg-rose-500 ring-4 ring-rose-500/20"></span>
+            <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none z-10">
+              <span class="w-2.5 h-2.5 rounded-sm" style="background-color: var(--accent-secondary);"></span>
             </div>
-            <input type="text" id="destInput" placeholder="Destination stop name, ID, or click map..."
-              class="w-full pl-9 pr-9 py-2 text-xs bg-slate-950 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:border-rose-500 transition"
-              autocomplete="off" oninput="handleStopAutocomplete('destInput', 'destDropdown')" />
-            <button onclick="clearInput('destInput')" class="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-500 hover:text-slate-300">
+            <input type="text" id="destInput" placeholder="Destination stop, ID, or lat,lon..."
+              class="input-field w-full pl-8 pr-14 py-2 text-xs rounded-md font-medium"
+              autocomplete="off"
+              oninput="handleStopAutocomplete('destInput', 'destDropdown')"
+              onkeydown="handleAutocompleteKeydown(event, 'destInput', 'destDropdown')" />
+            <button onclick="clearInput('destInput')" title="Clear destination" class="absolute inset-y-0 right-7 pr-2 flex items-center text-sm cursor-pointer" style="color: var(--ink-muted);">
               &times;
             </button>
-            <div id="destDropdown" class="hidden absolute top-full left-0 right-0 mt-1 bg-slate-950 border border-slate-700 rounded-lg shadow-xl max-h-52 overflow-y-auto z-50"></div>
+            <div id="destDropdown" class="hidden absolute top-full left-0 right-0 mt-1 rounded-md max-h-56 overflow-y-auto z-50 surface-floating"></div>
           </div>
         </div>
 
-        <!-- Departure Time Selector -->
+        <!-- Inline Validation Banner (Replaces browser alert()) -->
+        <div id="validationBanner" class="hidden px-3 py-1.5 rounded text-[11px] font-medium flex items-center justify-between" style="background-color: var(--accent-secondary-tint); color: var(--accent-secondary); border: 1px solid var(--accent-secondary);">
+          <span id="validationBannerText">Please enter both an origin and a destination stop.</span>
+          <button onclick="hideValidationBanner()" class="ml-2 font-bold">&times;</button>
+        </div>
+
+        <!-- Arterial Corridor Quick-Chips -->
         <div>
           <div class="flex items-center justify-between mb-1">
-            <label class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Departure Time (IST)</label>
-            <span id="currentTimeDisplay" class="text-[10px] text-slate-500 font-mono"></span>
+            <span class="text-[10px] font-mono uppercase tracking-wider font-semibold" style="color: var(--ink-muted);">
+              Benchmark Corridors
+            </span>
+            <span class="text-[10px] font-mono" style="color: var(--ink-muted);">1-click load</span>
           </div>
-          <!-- Quick Pills -->
-          <div class="grid grid-cols-4 gap-1 mb-2">
-            <button onclick="setTimePreset('08:30')" id="pill_morn" class="time-pill py-1 px-1.5 text-center text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded font-medium text-slate-300 transition">
-              08:30 Peak
+          <div class="grid grid-cols-2 gap-1.5">
+            <button onclick="loadPreset('preset_kg_np', '08:30')" class="px-2.5 py-1.5 text-left rounded transition cursor-pointer surface-card hover:opacity-90 flex items-center justify-between">
+              <div class="truncate pr-1">
+                <div class="text-[11px] font-semibold truncate" style="color: var(--ink-primary);">Kashmere Gate &rarr; Nehru Pl</div>
+                <div class="text-[10px] font-mono truncate" style="color: var(--ink-muted);">08:30 Peak &bull; 16.1 km</div>
+              </div>
+              <span class="text-[10px] font-mono px-1 rounded shrink-0" style="background-color: var(--accent-primary-tint); color: var(--accent-primary);">C1</span>
             </button>
-            <button onclick="setTimePreset('18:00')" id="pill_eve" class="time-pill py-1 px-1.5 text-center text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded font-medium text-slate-300 transition">
-              18:00 Peak
+            <button onclick="loadPreset('preset_av_cp', '09:00')" class="px-2.5 py-1.5 text-left rounded transition cursor-pointer surface-card hover:opacity-90 flex items-center justify-between">
+              <div class="truncate pr-1">
+                <div class="text-[11px] font-semibold truncate" style="color: var(--ink-primary);">Anand Vihar &rarr; Connaught Pl</div>
+                <div class="text-[10px] font-mono truncate" style="color: var(--ink-muted);">09:00 Peak &bull; Trans-Yamuna</div>
+              </div>
+              <span class="text-[10px] font-mono px-1 rounded shrink-0" style="background-color: var(--accent-primary-tint); color: var(--accent-primary);">C2</span>
             </button>
-            <button onclick="setTimePreset('23:00')" id="pill_night" class="time-pill py-1 px-1.5 text-center text-[11px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded font-medium text-slate-300 transition">
-              23:00 Night
+            <button onclick="loadPreset('preset_rohini_aiims', '08:45')" class="px-2.5 py-1.5 text-left rounded transition cursor-pointer surface-card hover:opacity-90 flex items-center justify-between">
+              <div class="truncate pr-1">
+                <div class="text-[11px] font-semibold truncate" style="color: var(--ink-primary);">Rohini Sec 22 &rarr; AIIMS</div>
+                <div class="text-[10px] font-mono truncate" style="color: var(--ink-muted);">08:45 Peak &bull; Ring Rd</div>
+              </div>
+              <span class="text-[10px] font-mono px-1 rounded shrink-0" style="background-color: var(--accent-primary-tint); color: var(--accent-primary);">C3</span>
             </button>
-            <button onclick="setTimePreset('now')" id="pill_now" class="time-pill py-1 px-1.5 text-center text-[11px] bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-700/60 rounded font-medium text-emerald-400 transition">
+            <button onclick="loadPreset('preset_dwarka_ito', '09:15')" class="px-2.5 py-1.5 text-left rounded transition cursor-pointer surface-card hover:opacity-90 flex items-center justify-between">
+              <div class="truncate pr-1">
+                <div class="text-[11px] font-semibold truncate" style="color: var(--ink-primary);">Dwarka Mor &rarr; ITO AGCR</div>
+                <div class="text-[10px] font-mono truncate" style="color: var(--ink-muted);">09:15 Peak &bull; West-East</div>
+              </div>
+              <span class="text-[10px] font-mono px-1 rounded shrink-0" style="background-color: var(--accent-primary-tint); color: var(--accent-primary);">C4</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Departure Time Selector + 24h Scrubber -->
+        <div class="pt-1 space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-[10px] font-mono uppercase tracking-wider font-semibold" style="color: var(--ink-muted);">
+              Departure Time (IST)
+            </label>
+            <span id="currentTimeDisplay" class="text-[10px] font-mono" style="color: var(--ink-muted);"></span>
+          </div>
+
+          <!-- Regime Quick Pills -->
+          <div class="grid grid-cols-4 gap-1">
+            <button onclick="setTimePreset('08:30')" id="pill_morn" class="time-pill py-1 px-1.5 text-center text-[11px] font-mono rounded font-medium transition cursor-pointer surface-card">
+              08:30 AM
+            </button>
+            <button onclick="setTimePreset('18:00')" id="pill_eve" class="time-pill py-1 px-1.5 text-center text-[11px] font-mono rounded font-medium transition cursor-pointer surface-card">
+              18:00 PM
+            </button>
+            <button onclick="setTimePreset('23:00')" id="pill_night" class="time-pill py-1 px-1.5 text-center text-[11px] font-mono rounded font-medium transition cursor-pointer surface-card">
+              23:00 NT
+            </button>
+            <button onclick="setTimePreset('now')" id="pill_now" class="time-pill py-1 px-1.5 text-center text-[11px] font-mono rounded font-semibold transition cursor-pointer" style="background-color: var(--accent-primary-tint); color: var(--accent-primary); border: 1px solid var(--accent-primary);">
               Live Now
             </button>
           </div>
+
+          <!-- Interactive 24-Hour Time Scrubber -->
+          <div class="px-1">
+            <input type="range" id="timeScrubber" min="0" max="95" value="34" class="time-scrubber" oninput="handleTimeScrubber(this.value)" onchange="if(document.getElementById('originInput').value && document.getElementById('destInput').value) planJourney()" />
+            <div class="flex justify-between text-[9px] font-mono mt-0.5" style="color: var(--ink-muted);">
+              <span>00:00</span>
+              <span>05:30 Free-Flow</span>
+              <span>09:00 Peak</span>
+              <span>18:30 Peak</span>
+              <span>23:45</span>
+            </div>
+          </div>
+
+          <!-- Exact Time Input + Primary Action Button -->
           <div class="flex items-center space-x-2">
-            <input type="time" id="customTimeInput" value="08:30" class="flex-1 py-1.5 px-3 bg-slate-950 border border-slate-700 rounded text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500" />
-            <button onclick="planJourney()" class="flex-1 py-1.5 px-4 bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 font-bold text-xs text-slate-950 rounded-lg shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-1">
-              <span>Plan Journey</span>
+            <input type="text" id="customTimeInput" value="08:30" placeholder="08:30 or now"
+              class="input-field w-28 py-1.5 px-2.5 rounded text-xs font-mono font-medium" />
+            <button onclick="planJourney()" class="flex-1 py-2 px-4 rounded font-semibold text-xs transition flex items-center justify-center space-x-1.5 cursor-pointer" style="background-color: var(--accent-primary); color: #FFFFFF;">
+              <span>Compute Optimal Journeys</span>
               <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3"/>
               </svg>
             </button>
           </div>
         </div>
-
       </div>
 
+      <!-- Diurnal Peak vs. Night Comparison Strip (Hidden until triggered) -->
+      <div id="diurnalComparePanel" class="hidden px-4 py-2.5 text-xs shrink-0" style="background-color: var(--bg-subtle); border-bottom: 1px solid var(--border-hairline);"></div>
+
       <!-- Results List Container -->
-      <div id="resultsContainer" class="flex-1 overflow-y-auto p-4 space-y-4">
-        <!-- Initial Welcome Placeholder -->
-        <div id="welcomePlaceholder" class="text-center py-12 px-4 space-y-3">
-          <div class="w-12 h-12 mx-auto rounded-full bg-slate-800/80 flex items-center justify-center text-slate-400">
-            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-            </svg>
+      <div id="resultsContainer" class="flex-1 overflow-y-auto p-4 space-y-3 select-text" style="background-color: var(--bg-canvas);">
+
+        <!-- Initial Editorial Welcome State -->
+        <div id="welcomePlaceholder" class="py-10 px-4 space-y-4">
+          <div class="surface-card rounded-lg p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-mono uppercase tracking-wider font-semibold px-2 py-0.5 rounded" style="background-color: var(--accent-primary-tint); color: var(--accent-primary);">
+                3-Profile Reliability Router
+              </span>
+              <span class="text-[11px] font-mono" style="color: var(--ink-muted);">Port 8550</span>
+            </div>
+            <h2 class="text-sm font-bold" style="color: var(--ink-primary);">
+              Time-Dependent Common-Lines RAPTOR
+            </h2>
+            <p class="text-xs leading-relaxed" style="color: var(--ink-secondary);">
+              Select one of the benchmark corridors above, search across all <span class="font-mono font-semibold">6,812</span> Delhi bus stops, or click directly on the map.
+            </p>
+            <div class="pt-2 grid grid-cols-3 gap-2 text-[11px] font-mono" style="border-top: 1px solid var(--border-hairline);">
+              <div>
+                <div class="text-[10px]" style="color: var(--ink-muted);">STAGE 4B MAE</div>
+                <div class="font-semibold" style="color: var(--ink-primary);">164.5s (-52.9%)</div>
+              </div>
+              <div>
+                <div class="text-[10px]" style="color: var(--ink-muted);">P85 COVERAGE</div>
+                <div class="font-semibold" style="color: var(--accent-primary);">84.5% / 89.1%</div>
+              </div>
+              <div>
+                <div class="text-[10px]" style="color: var(--ink-muted);">HORIZON SLICE</div>
+                <div class="font-semibold" style="color: var(--ink-primary);">2.25 ms</div>
+              </div>
+            </div>
           </div>
-          <h2 class="text-sm font-semibold text-slate-300">Ready to Plan Across Delhi</h2>
-          <p class="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-            Select a benchmark preset above or enter origin and destination stops. Every journey includes live anomaly blending, common-line attractive sets, and P85 reliable arrival buffers.
-          </p>
         </div>
 
-        <!-- Loading Spinner -->
-        <div id="loadingState" class="hidden text-center py-16 space-y-3">
-          <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-slate-700 border-t-emerald-400"></div>
-          <p class="text-xs text-slate-400 font-mono">Running Common-Lines RAPTOR & Horizon Matrix...</p>
+        <!-- Skeleton Shimmer Loading State -->
+        <div id="loadingState" class="hidden space-y-3">
+          <div class="surface-card rounded-lg p-3.5 space-y-2.5">
+            <div class="flex justify-between">
+              <div class="h-4 w-36 rounded skeleton-pulse"></div>
+              <div class="h-4 w-20 rounded skeleton-pulse"></div>
+            </div>
+            <div class="h-2.5 w-full rounded skeleton-pulse"></div>
+            <div class="h-12 w-full rounded skeleton-pulse"></div>
+          </div>
+          <div class="surface-card rounded-lg p-3.5 space-y-2.5">
+            <div class="flex justify-between">
+              <div class="h-4 w-32 rounded skeleton-pulse"></div>
+              <div class="h-4 w-24 rounded skeleton-pulse"></div>
+            </div>
+            <div class="h-2.5 w-full rounded skeleton-pulse"></div>
+            <div class="h-12 w-full rounded skeleton-pulse"></div>
+          </div>
         </div>
 
-        <!-- Options Cards Render Target -->
-        <div id="optionsList" class="space-y-4"></div>
+        <!-- Dynamic Journey Option Cards -->
+        <div id="optionsList" class="space-y-3"></div>
       </div>
 
     </aside>
 
-    <!-- Right Side: MapLibre Map Container -->
+    <!-- Collapse / Expand Sidebar Handle on Desktop -->
+    <button id="sheetCollapseBtn" onclick="togglePlannerSheet()" title="Collapse / Expand Planner Panel"
+      class="hidden md:flex absolute left-[440px] lg:left-[460px] top-1/2 -translate-y-1/2 z-30 w-5 h-12 rounded-r items-center justify-center cursor-pointer transition-all duration-200 surface-card"
+      style="border-left: none; color: var(--ink-secondary);">
+      <svg id="sheetCollapseIcon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+      </svg>
+    </button>
+
+    <!-- Right Map Canvas -->
     <main class="flex-1 h-full relative">
       <div id="map" class="w-full h-full"></div>
 
-      <!-- Map Overlay Controls -->
-      <div class="absolute top-4 right-4 z-10 flex flex-col space-y-2">
-        <!-- Toggle Provenance-Aware Traffic Corridor Heatmap -->
-        <button id="toggleTrafficCorridorsBtn" onclick="toggleTrafficCorridorsLayer()" class="px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 shadow-xl flex items-center space-x-2 transition">
-          <span id="trafficCorridorDot" class="w-2 h-2 rounded-full bg-slate-500"></span>
+      <!-- Top-Right Unified Cartographic Control Bar -->
+      <div class="absolute top-3.5 right-3.5 z-10 flex items-center space-x-1.5 p-1 rounded-lg surface-floating">
+        <!-- Traffic Sensor Layer Toggle -->
+        <button id="toggleTrafficCorridorsBtn" onclick="toggleTrafficCorridorsLayer()"
+          class="px-2.5 py-1.5 rounded text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+          style="color: var(--ink-primary);">
+          <span id="trafficCorridorDot" class="w-2 h-2 rounded-full" style="background-color: var(--ink-muted);"></span>
           <span>Traffic Sensor Layer</span>
         </button>
-        <!-- Toggle Live Buses Layer -->
-        <button id="toggleLiveBusesBtn" onclick="toggleLiveBusesLayer()" class="px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur border border-slate-700 rounded-lg text-xs font-semibold text-slate-200 shadow-xl flex items-center space-x-2 transition">
-          <span class="w-2 h-2 rounded-full bg-emerald-400"></span>
+
+        <div class="h-4 w-px" style="background-color: var(--border-hairline);"></div>
+
+        <!-- Live Vehicles Layer Toggle -->
+        <button id="toggleLiveBusesBtn" onclick="toggleLiveBusesLayer()"
+          class="px-2.5 py-1.5 rounded text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+          style="color: var(--ink-primary);">
+          <span id="liveBusesDot" class="w-2 h-2 rounded-full" style="background-color: var(--accent-secondary);"></span>
           <span>Live Vehicles</span>
         </button>
+
+        <div class="h-4 w-px" style="background-color: var(--border-hairline);"></div>
+
         <!-- Map Click Pick Mode Toggle -->
-        <button id="mapPickModeBtn" onclick="toggleMapPickMode()" class="px-3 py-1.5 bg-slate-900/90 hover:bg-slate-800 backdrop-blur border border-slate-700 rounded-lg text-xs font-semibold text-slate-300 shadow-xl flex items-center space-x-1.5 transition">
-          <svg class="w-3.5 h-3.5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        <button id="mapPickModeBtn" onclick="toggleMapPickMode()"
+          class="px-2.5 py-1.5 rounded text-xs font-semibold flex items-center space-x-1.5 transition cursor-pointer"
+          style="color: var(--ink-primary);">
+          <svg class="w-3.5 h-3.5" style="color: var(--accent-primary);" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
           </svg>
-          <span id="pickModeText">Click Map to Set</span>
+          <span id="pickModeText">Set on Map</span>
         </button>
       </div>
 
-      <!-- Provenance-Aware Traffic Sensor Legend Panel -->
-      <div id="trafficLegendPanel" class="hidden absolute top-4 left-4 z-10 bg-slate-900/95 backdrop-blur border border-slate-700 p-3 rounded-xl text-xs text-slate-200 shadow-2xl max-w-xs space-y-2.5">
-        <div class="flex items-center justify-between border-b border-slate-800 pb-1.5">
-          <span class="font-bold text-amber-400 flex items-center space-x-1.5">
-            <span>📡 Traffic Sensor Layer</span>
+      <!-- Provenance-Aware Traffic Sensor Legend & Telemetry Card -->
+      <div id="trafficLegendPanel" class="hidden absolute top-16 right-3.5 z-10 p-3.5 rounded-lg text-xs w-72 space-y-2.5 surface-floating">
+        <div class="flex items-center justify-between pb-1.5" style="border-bottom: 1px solid var(--border-hairline);">
+          <span class="font-bold text-xs tracking-tight" style="color: var(--ink-primary);">
+            Corridor Telemetry Provenance
           </span>
-          <span id="trafficTimeLabel" class="text-[10px] text-slate-400 font-mono">08:30 IST</span>
+          <span id="trafficTimeLabel" class="text-[10px] font-mono px-1.5 py-0.5 rounded" style="background-color: var(--bg-subtle); color: var(--ink-secondary);">08:30 IST</span>
         </div>
-        <!-- Provenance Counts -->
-        <div class="space-y-1 text-[11px] font-mono">
-          <div class="flex items-center justify-between">
-            <span class="flex items-center space-x-1.5 text-emerald-300 font-semibold">
-              <span class="w-3.5 h-1 bg-emerald-400 rounded"></span>
-              <span>LIVE (&lt;45m)</span>
-            </span>
-            <span id="provenanceLiveCount" class="font-bold text-slate-100">0</span>
+
+        <!-- Provenance Breakdown with Proportional Bars -->
+        <div class="space-y-1.5 text-[11px] font-mono">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center space-x-1.5 font-semibold" style="color: var(--status-free);">
+                <span class="w-3 h-1 rounded" style="background-color: var(--status-free);"></span>
+                <span>LIVE (&lt;45m GPS)</span>
+              </span>
+              <span id="provenanceLiveCount" class="font-bold" style="color: var(--ink-primary);">0</span>
+            </div>
           </div>
-          <div class="flex items-center justify-between">
-            <span class="flex items-center space-x-1.5 text-amber-300">
-              <span class="w-3.5 h-1 bg-amber-400/70 rounded"></span>
-              <span>OBSERVED_HIST (&plusmn;1h)</span>
-            </span>
-            <span id="provenanceHistCount" class="font-bold text-slate-100">0</span>
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center space-x-1.5 font-medium" style="color: var(--status-delay);">
+                <span class="w-3 h-1 rounded" style="background-color: var(--status-delay);"></span>
+                <span>OBSERVED_HIST (&plusmn;1h)</span>
+              </span>
+              <span id="provenanceHistCount" class="font-bold" style="color: var(--ink-primary);">0</span>
+            </div>
           </div>
-          <div class="flex items-center justify-between">
-            <span class="flex items-center space-x-1.5 text-slate-400">
-              <span class="w-3.5 h-0.5 border-b border-dashed border-slate-500"></span>
-              <span>PRIOR (Extrapolation)</span>
-            </span>
-            <span id="provenancePriorCount" class="font-bold text-slate-100">0</span>
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="flex items-center space-x-1.5" style="color: var(--ink-muted);">
+                <span class="w-3 h-0.5 border-b border-dashed" style="border-color: var(--ink-muted);"></span>
+                <span>PRIOR (EB Diurnal)</span>
+              </span>
+              <span id="provenancePriorCount" class="font-bold" style="color: var(--ink-primary);">0</span>
+            </div>
           </div>
         </div>
-        <!-- Congestion Color Gradient -->
-        <div class="pt-1.5 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-          <span class="text-emerald-400">&lt;1.15x Free</span>
-          <span class="text-amber-400">1.15-1.4x Delay</span>
-          <span class="text-rose-400">&gt;1.4x Jam</span>
+
+        <!-- Congestion Ratio Scale -->
+        <div class="pt-2 space-y-1" style="border-top: 1px solid var(--border-hairline);">
+          <div class="flex h-1.5 w-full rounded overflow-hidden">
+            <div class="w-1/3" style="background-color: var(--status-free);"></div>
+            <div class="w-1/3" style="background-color: var(--status-delay);"></div>
+            <div class="w-1/3" style="background-color: var(--status-jam);"></div>
+          </div>
+          <div class="flex items-center justify-between text-[10px] font-mono" style="color: var(--ink-secondary);">
+            <span>&lt;1.15x Free</span>
+            <span>1.15–1.40x Mod</span>
+            <span>&gt;1.40x Heavy</span>
+          </div>
         </div>
       </div>
 
-      <!-- Live Legend Pill on Map Bottom -->
-      <div class="absolute bottom-4 left-4 z-10 bg-slate-900/90 backdrop-blur border border-slate-800 px-3 py-2 rounded-lg text-[11px] text-slate-300 shadow-2xl flex items-center space-x-4">
+      <!-- Bottom-Right Cartographic Schematic Legend -->
+      <div class="absolute bottom-4 right-3.5 z-10 px-3 py-2 rounded-lg text-[11px] flex items-center space-x-3.5 surface-floating" style="color: var(--ink-secondary);">
         <div class="flex items-center space-x-1.5">
-          <span class="w-3.5 h-1 bg-cyan-400 rounded"></span>
-          <span>Direct Bus</span>
+          <span class="w-3.5 h-1 rounded" style="background-color: var(--accent-primary);"></span>
+          <span class="font-medium">Common-Lines Bundle</span>
         </div>
         <div class="flex items-center space-x-1.5">
-          <span class="w-3.5 h-1 bg-emerald-400 rounded"></span>
-          <span>Common-Lines Set</span>
+          <span class="w-3.5 h-1 rounded" style="background-color: var(--route-single);"></span>
+          <span class="font-medium">Direct Route</span>
         </div>
         <div class="flex items-center space-x-1.5">
-          <span class="w-3.5 h-0.5 border-b-2 border-dashed border-slate-400"></span>
-          <span>Walk</span>
+          <span class="w-3.5 h-0.5 border-b-2 border-dashed" style="border-color: var(--ink-muted);"></span>
+          <span class="font-medium">Walk Transfer</span>
         </div>
         <div class="flex items-center space-x-1.5">
-          <span class="w-2 h-2 rounded-full bg-amber-400"></span>
-          <span>Live Bus Ping</span>
+          <span class="w-2.5 h-2.5 rounded-full border" style="background-color: var(--accent-secondary); border-color: var(--bg-surface);"></span>
+          <span class="font-medium">Live Bus</span>
         </div>
       </div>
     </main>
@@ -308,59 +590,155 @@
   <!-- Application Logic -->
   <script>
     let map;
+    let currentTheme = localStorage.getItem('dt_theme') || 'light';
     let currentJourneys = [];
     let selectedOptionId = 0;
     let pickMode = null; // 'origin' | 'dest' | null
     let liveBusesVisible = true;
     let liveBusMarkers = [];
     let legMarkers = [];
+    let sheetCollapsed = false;
+    let autocompleteIndex = -1;
 
-    // Initialize MapLibre GL Map with zero API-key OpenStreetMap tiles
+    const OSM_TILES = ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'];
+
+    function applyTheme(theme) {
+      currentTheme = theme;
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('dt_theme', theme);
+      const sun = document.getElementById('themeIconSun');
+      const moon = document.getElementById('themeIconMoon');
+      if (theme === 'dark') {
+        sun.classList.remove('hidden');
+        moon.classList.add('hidden');
+      } else {
+        sun.classList.add('hidden');
+        moon.classList.remove('hidden');
+      }
+
+      if (map && map.getLayer('bus-legs-casing')) {
+        map.setPaintProperty('bus-legs-casing', 'line-color', '#FFFFFF');
+      }
+      if (map && map.getLayer('bus-legs-inner')) {
+        map.setPaintProperty('bus-legs-inner', 'line-color', [
+          'case',
+          ['get', 'is_common_line'], '#0B6E5B',
+          '#1E4E8C'
+        ]);
+      }
+    }
+
+    function toggleTheme() {
+      applyTheme(currentTheme === 'light' ? 'dark' : 'light');
+    }
+
+    function togglePlannerSheet() {
+      sheetCollapsed = !sheetCollapsed;
+      const sheet = document.getElementById('plannerSheet');
+      const btn = document.getElementById('sheetCollapseBtn');
+      const icon = document.getElementById('sheetCollapseIcon');
+      if (sheetCollapsed) {
+        sheet.style.marginLeft = '-460px';
+        btn.style.left = '0px';
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>';
+      } else {
+        sheet.style.marginLeft = '0px';
+        btn.style.left = '';
+        icon.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>';
+      }
+      setTimeout(() => { if (map) map.resize(); }, 220);
+    }
+
+    // Initialize MapLibre GL Map with Carto Positron / Dark Matter tiles (zero API key)
     function initMap() {
+      applyTheme(currentTheme);
+
       map = new maplibregl.Map({
         container: 'map',
         style: {
           version: 8,
           sources: {
-            'osm-raster': {
+            'carto-basemap': {
               type: 'raster',
-              tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
+              tiles: OSM_TILES,
               tileSize: 256,
               attribution: '&copy; <a href="https://openstreetmap.org" target="_blank">OpenStreetMap</a>'
             }
           },
           layers: [
             {
-              id: 'osm-layer',
+              id: 'carto-layer',
               type: 'raster',
-              source: 'osm-raster',
+              source: 'carto-basemap',
               minzoom: 0,
-              maxzoom: 19
+              maxzoom: 19,
+              paint: {
+                'raster-saturation': -0.82,
+                'raster-contrast': -0.08,
+                'raster-brightness-min': 0.10
+              }
             }
           ]
         },
         center: [77.2090, 28.6139], // Connaught Place, Delhi
-        zoom: 11.5
+        zoom: 11.4
       });
 
-      map.addControl(new maplibregl.NavigationControl(), 'top-left');
+      map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'bottom-left');
 
       map.on('load', () => {
-        // Source and layers for journey route lines
+        // Alternative profile ghost polylines source & clickable layer
+        map.addSource('ghost-legs', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+
+        map.addLayer({
+          id: 'ghost-legs-line',
+          type: 'line',
+          source: 'ghost-legs',
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
+          paint: {
+            'line-color': '#7A818B',
+            'line-width': 4,
+            'line-opacity': 0.50,
+            'line-dasharray': [2, 1.5]
+          }
+        });
+
+        map.on('click', 'ghost-legs-line', (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const optIdx = e.features[0].properties.option_idx;
+          if (typeof optIdx === 'number' && optIdx !== selectedOptionId) {
+            selectOption(optIdx);
+          }
+        });
+        map.on('mouseenter', 'ghost-legs-line', () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'ghost-legs-line', () => {
+          map.getCanvas().style.cursor = '';
+        });
+
         map.addSource('journey-legs', {
           type: 'geojson',
           data: { type: 'FeatureCollection', features: [] }
         });
 
-        // Bus legs (solid bright line)
+        // High-contrast casing for active bus legs
         map.addLayer({
           id: 'bus-legs-casing',
           type: 'line',
           source: 'journey-legs',
           filter: ['==', 'mode', 'BUS'],
           layout: { 'line-join': 'round', 'line-cap': 'round' },
-          paint: { 'line-color': '#0f172a', 'line-width': 7 }
+          paint: {
+            'line-color': '#FFFFFF',
+            'line-width': ['case', ['boolean', ['get', 'highlighted'], false], 10, 7.5]
+          }
         });
+
+        // Active bus legs (DTC Teal for Common-Lines bundle, Navy/Blue for Direct route)
         map.addLayer({
           id: 'bus-legs-inner',
           type: 'line',
@@ -370,14 +748,14 @@
           paint: {
             'line-color': [
               'case',
-              ['get', 'is_common_line'], '#10b981',
-              '#06b6d4'
+              ['get', 'is_common_line'], '#0B6E5B',
+              '#1E4E8C'
             ],
-            'line-width': 4
+            'line-width': ['case', ['boolean', ['get', 'highlighted'], false], 6.5, 4.5]
           }
         });
 
-        // Walk legs (dashed line)
+        // Footpath walking transfers
         map.addLayer({
           id: 'walk-legs-line',
           type: 'line',
@@ -385,18 +763,72 @@
           filter: ['==', 'mode', 'WALK'],
           layout: { 'line-join': 'round', 'line-cap': 'round' },
           paint: {
-            'line-color': '#94a3b8',
+            'line-color': '#7C828B',
             'line-width': 3,
             'line-dasharray': [2, 2]
           }
         });
 
-        // Fetch live buses initially
+        // 60fps WebGL GeoJSON source & circle layer for Active Live Fleet
+        map.addSource('live-buses-source', {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [] }
+        });
+
+        map.addLayer({
+          id: 'live-buses-layer',
+          type: 'circle',
+          source: 'live-buses-source',
+          paint: {
+            'circle-radius': [
+              'interpolate', ['linear'], ['zoom'],
+              10, 3.2,
+              13, 5.0,
+              16, 7.0
+            ],
+            'circle-color': [
+              'step',
+              ['get', 'speed'],
+              '#C84B1B',
+              12.0, '#C2740C',
+              22.0, '#0E835C'
+            ],
+            'circle-stroke-width': 1.4,
+            'circle-stroke-color': '#FFFFFF',
+            'circle-opacity': 0.92
+          }
+        });
+
+        map.on('click', 'live-buses-layer', (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const b = e.features[0].properties;
+          const coords = e.features[0].geometry.coordinates.slice();
+          const popupHtml = `
+            <div class="text-xs space-y-1">
+              <div class="flex items-center space-x-1.5">
+                <span class="px-1.5 py-0.5 rounded-sm font-mono text-[10px] font-bold" style="background-color: var(--accent-primary); color: #FFFFFF;">${b.route_short_name}</span>
+                <span class="font-mono font-semibold text-[11px]">${b.vehicle_id}</span>
+              </div>
+              <div class="text-[11px] font-mono" style="color: var(--ink-secondary);">Speed: <strong>${Number(b.speed).toFixed(1)} km/h</strong></div>
+              <div class="text-[10px] font-mono" style="color: var(--ink-muted);">Telemetry age: ${Number(b.age_sec).toFixed(0)}s ago</div>
+            </div>
+          `;
+          new maplibregl.Popup({ offset: 6 })
+            .setLngLat(coords)
+            .setHTML(popupHtml)
+            .addTo(map);
+        });
+        map.on('mouseenter', 'live-buses-layer', () => {
+          map.getCanvas().style.cursor = 'pointer';
+        });
+        map.on('mouseleave', 'live-buses-layer', () => {
+          map.getCanvas().style.cursor = '';
+        });
+
         fetchLiveBuses();
         setInterval(fetchLiveBuses, 30000);
       });
 
-      // Handle map clicks for pick mode
       map.on('click', (e) => {
         if (!pickMode) return;
         const coords = `${e.lngLat.lat.toFixed(5)},${e.lngLat.lng.toFixed(5)}`;
@@ -413,10 +845,37 @@
       });
     }
 
-    // Autocomplete for Stop Names
+    // Highlight specific leg on map when hovering in timeline
+    function highlightMapLeg(legIdx) {
+      if (!map || !map.getSource('journey-legs')) return;
+      const opt = currentJourneys[selectedOptionId];
+      if (!opt) return;
+      const features = opt.legs.map((leg, i) => ({
+        type: 'Feature',
+        properties: {
+          mode: leg.mode,
+          is_common_line: leg.is_common_line,
+          route_display: leg.route_display,
+          highlighted: i === legIdx
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: leg.geometry
+        }
+      }));
+      map.getSource('journey-legs').setData({ type: 'FeatureCollection', features });
+    }
+
+    // Escape regex special characters for safe substring highlighting
+    function escapeRegExp(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+
+    // Stop Autocomplete with Keyboard Navigation & Matched Substring Highlight
     let autocompleteTimeout;
     async function handleStopAutocomplete(inputId, dropdownId) {
       clearTimeout(autocompleteTimeout);
+      autocompleteIndex = -1;
       const val = document.getElementById(inputId).value.trim();
       const dropdown = document.getElementById(dropdownId);
 
@@ -435,23 +894,64 @@
             return;
           }
 
-          dropdown.innerHTML = stops.map(s => `
-            <div onclick="selectStop('${inputId}', '${dropdownId}', '${s.stop_name.replace(/'/g, "\\'")}')"
-                 class="px-3 py-2 text-xs hover:bg-slate-800 cursor-pointer border-b border-slate-800/60 last:border-0 flex items-center justify-between">
-              <span class="font-medium text-slate-200 truncate">${s.stop_name}</span>
-              <span class="text-[10px] text-slate-500 font-mono ml-2 shrink-0">#${s.stop_id}</span>
-            </div>
-          `).join('');
+          const rx = new RegExp(`(${escapeRegExp(val)})`, 'ig');
+          dropdown.innerHTML = stops.map((s, idx) => {
+            const highlightedName = s.stop_name.replace(rx, '<strong style="color: var(--accent-primary);">$1</strong>');
+            return `
+              <div data-name="${s.stop_name.replace(/"/g, '&quot;')}"
+                   onclick="selectStop('${inputId}', '${dropdownId}', '${s.stop_name.replace(/'/g, "\\'")}')"
+                   class="ac-item px-3 py-2 text-xs cursor-pointer flex items-center justify-between transition"
+                   style="border-bottom: 1px solid var(--border-hairline);">
+                <span class="font-medium truncate" style="color: var(--ink-primary);">${highlightedName}</span>
+                <span class="text-[10px] font-mono ml-2 shrink-0 px-1.5 py-0.5 rounded" style="background-color: var(--bg-subtle); color: var(--ink-muted);">#${s.stop_id}</span>
+              </div>
+            `;
+          }).join('');
           dropdown.classList.remove('hidden');
         } catch (e) {
           console.warn("Autocomplete error:", e);
         }
-      }, 150);
+      }, 130);
+    }
+
+    function handleAutocompleteKeydown(event, inputId, dropdownId) {
+      const dropdown = document.getElementById(dropdownId);
+      const items = dropdown.querySelectorAll('.ac-item');
+      if (dropdown.classList.contains('hidden') || items.length === 0) {
+        if (event.key === 'Enter') planJourney();
+        return;
+      }
+      if (event.key === 'ArrowDown') {
+        event.preventDefault();
+        autocompleteIndex = (autocompleteIndex + 1) % items.length;
+        updateAutocompleteActive(items);
+      } else if (event.key === 'ArrowUp') {
+        event.preventDefault();
+        autocompleteIndex = (autocompleteIndex - 1 + items.length) % items.length;
+        updateAutocompleteActive(items);
+      } else if (event.key === 'Enter') {
+        event.preventDefault();
+        if (autocompleteIndex >= 0 && items[autocompleteIndex]) {
+          selectStop(inputId, dropdownId, items[autocompleteIndex].getAttribute('data-name'));
+        } else {
+          dropdown.classList.add('hidden');
+          planJourney();
+        }
+      } else if (event.key === 'Escape') {
+        dropdown.classList.add('hidden');
+      }
+    }
+
+    function updateAutocompleteActive(items) {
+      items.forEach((el, i) => {
+        el.style.backgroundColor = i === autocompleteIndex ? 'var(--bg-subtle)' : '';
+      });
     }
 
     function selectStop(inputId, dropdownId, name) {
       document.getElementById(inputId).value = name;
       document.getElementById(dropdownId).classList.add('hidden');
+      hideValidationBanner();
     }
 
     function clearInput(inputId) {
@@ -467,17 +967,36 @@
       if (d && o) planJourney();
     }
 
+    function handleTimeScrubber(binVal) {
+      const totalMins = parseInt(binVal, 10) * 15;
+      const hh = String(Math.floor(totalMins / 60)).padStart(2, '0');
+      const mm = String(totalMins % 60).padStart(2, '0');
+      document.getElementById('customTimeInput').value = `${hh}:${mm}`;
+      document.querySelectorAll('.time-pill').forEach(el => {
+        el.style.borderColor = 'var(--border-hairline)';
+        el.style.fontWeight = '500';
+      });
+    }
+
     function setTimePreset(val) {
-      document.querySelectorAll('.time-pill').forEach(el => el.classList.remove('ring-2', 'ring-cyan-400'));
+      document.querySelectorAll('.time-pill').forEach(el => {
+        el.style.borderColor = 'var(--border-hairline)';
+      });
       if (val === 'now') {
-        document.getElementById('pill_now').classList.add('ring-2', 'ring-cyan-400');
+        document.getElementById('pill_now').style.borderColor = 'var(--accent-primary)';
         document.getElementById('customTimeInput').value = 'now';
       } else {
         document.getElementById('customTimeInput').value = val;
-        if (val === '08:30') document.getElementById('pill_morn').classList.add('ring-2', 'ring-cyan-400');
-        if (val === '18:00') document.getElementById('pill_eve').classList.add('ring-2', 'ring-cyan-400');
-        if (val === '23:00') document.getElementById('pill_night').classList.add('ring-2', 'ring-cyan-400');
+        const parts = val.split(':');
+        if (parts.length === 2) {
+          const bin = Math.floor((parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10)) / 15);
+          document.getElementById('timeScrubber').value = bin;
+        }
+        if (val === '08:30') document.getElementById('pill_morn').style.borderColor = 'var(--accent-primary)';
+        if (val === '18:00') document.getElementById('pill_eve').style.borderColor = 'var(--accent-primary)';
+        if (val === '23:00') document.getElementById('pill_night').style.borderColor = 'var(--accent-primary)';
       }
+      if (trafficCorridorsVisible) refreshTrafficCorridorsData();
     }
 
     function toggleMapPickMode() {
@@ -489,20 +1008,30 @@
       const btn = document.getElementById('mapPickModeBtn');
       const text = document.getElementById('pickModeText');
       if (pickMode === 'origin') {
-        text.innerText = 'Click Map for Origin...';
-        btn.classList.add('border-emerald-500', 'text-emerald-400');
+        text.innerText = 'Click Origin...';
+        btn.style.color = 'var(--accent-primary)';
       } else if (pickMode === 'dest') {
-        text.innerText = 'Click Map for Destination...';
-        btn.classList.remove('border-emerald-500', 'text-emerald-400');
-        btn.classList.add('border-rose-500', 'text-rose-400');
+        text.innerText = 'Click Destination...';
+        btn.style.color = 'var(--accent-secondary)';
       } else {
-        text.innerText = 'Click Map to Set';
-        btn.classList.remove('border-emerald-500', 'text-emerald-400', 'border-rose-500', 'text-rose-400');
+        text.innerText = 'Set on Map';
+        btn.style.color = 'var(--ink-primary)';
       }
+    }
+
+    function showValidationBanner(msg) {
+      const banner = document.getElementById('validationBanner');
+      document.getElementById('validationBannerText').innerText = msg;
+      banner.classList.remove('hidden');
+    }
+
+    function hideValidationBanner() {
+      document.getElementById('validationBanner').classList.add('hidden');
     }
 
     // Benchmark Presets Loader
     function loadPreset(presetId, timeVal) {
+      hideValidationBanner();
       setTimePreset(timeVal);
       if (presetId === 'preset_kg_np') {
         document.getElementById('originInput').value = 'ISBT Kashmere Gate';
@@ -520,20 +1049,75 @@
       planJourney();
     }
 
-    // Main Planning Function
+    // 1-Click Diurnal Peak (08:30) vs Night (23:00) Comparison
+    async function runDiurnalCompare() {
+      let from = document.getElementById('originInput').value.trim();
+      let to = document.getElementById('destInput').value.trim();
+      if (!from || !to) {
+        from = 'ISBT Kashmere Gate';
+        to = 'Nehru Place Terminal';
+        document.getElementById('originInput').value = from;
+        document.getElementById('destInput').value = to;
+      }
+      const panel = document.getElementById('diurnalComparePanel');
+      panel.classList.remove('hidden');
+      panel.innerHTML = `<div class="font-mono text-[11px]" style="color: var(--ink-secondary);">Comparing 08:30 AM Peak vs. 23:00 Night across corridor...</div>`;
+
+      try {
+        const [rPeak, rNight] = await Promise.all([
+          fetch(`/journeys?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart=08:30`),
+          fetch(`/journeys?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart=23:00`)
+        ]);
+        if (!rPeak.ok || !rNight.ok) throw new Error('Could not compute diurnal comparison');
+        const [dPeak, dNight] = await Promise.all([rPeak.json(), rNight.json()]);
+        const pOpt = dPeak.options && dPeak.options[0];
+        const nOpt = dNight.options && dNight.options[0];
+        if (!pOpt || !nOpt) throw new Error('No direct comparison available');
+
+        const delta = (pOpt.total_duration_mins - nOpt.total_duration_mins).toFixed(1);
+        panel.innerHTML = `
+          <div class="flex items-center justify-between">
+            <div class="space-y-0.5">
+              <div class="text-[10px] font-mono uppercase font-semibold" style="color: var(--ink-muted);">Diurnal Sensitivity Audit</div>
+              <div class="text-xs font-mono">
+                <span class="font-semibold" style="color: var(--status-delay);">08:30 Peak: ${pOpt.total_duration_mins.toFixed(0)}m</span>
+                <span style="color: var(--ink-muted);"> (P85 ${pOpt.p85_total_duration_mins.toFixed(0)}m)</span>
+                <span class="mx-1.5" style="color: var(--ink-muted);">vs.</span>
+                <span class="font-semibold" style="color: var(--status-free);">23:00 Night: ${nOpt.total_duration_mins.toFixed(0)}m</span>
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="px-2 py-0.5 rounded font-mono text-[11px] font-bold" style="background-color: var(--accent-secondary-tint); color: var(--accent-secondary);">
+                +${delta}m Peak Penalty
+              </span>
+              <button onclick="document.getElementById('diurnalComparePanel').classList.add('hidden')" class="ml-2 text-xs cursor-pointer" style="color: var(--ink-muted);">&times;</button>
+            </div>
+          </div>
+        `;
+      } catch (e) {
+        panel.innerHTML = `<div class="text-[11px]" style="color: var(--status-jam);">${e.message}</div>`;
+      }
+    }
+
+    // Main Journey Planner
     async function planJourney() {
       const from = document.getElementById('originInput').value.trim();
       const to = document.getElementById('destInput').value.trim();
       const depart = document.getElementById('customTimeInput').value.trim() || 'now';
 
       if (!from || !to) {
-        alert("Please specify both Origin and Destination.");
+        showValidationBanner('Specify both Origin and Destination stops (or pick a corridor chip).');
+        if (!from) document.getElementById('originInput').focus();
+        else document.getElementById('destInput').focus();
         return;
       }
 
+      hideValidationBanner();
       document.getElementById('welcomePlaceholder').classList.add('hidden');
       document.getElementById('loadingState').classList.remove('hidden');
       document.getElementById('optionsList').innerHTML = '';
+
+      if (trafficCorridorsVisible) refreshTrafficCorridorsData();
 
       try {
         const url = `/journeys?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&depart=${encodeURIComponent(depart)}`;
@@ -543,8 +1127,9 @@
         if (!res.ok) {
           const err = await res.json();
           document.getElementById('optionsList').innerHTML = `
-            <div class="p-4 bg-rose-950/40 border border-rose-800/80 rounded-lg text-xs text-rose-300">
-              ${err.detail || 'Could not find a valid transit connection.'}
+            <div class="p-3.5 rounded-lg text-xs font-medium surface-card" style="border-left: 3px solid var(--status-jam); color: var(--ink-primary);">
+              <div class="font-bold mb-0.5" style="color: var(--status-jam);">Routing Error</div>
+              <div style="color: var(--ink-secondary);">${err.detail || 'Could not find a valid transit connection.'}</div>
             </div>
           `;
           return;
@@ -553,14 +1138,13 @@
         const data = await res.json();
         currentJourneys = data.options || [];
 
-        // Update latency badge
         document.getElementById('routingLatencyBadge').innerText = `RAPTOR: ${data.routing_latency_ms.toFixed(1)}ms`;
         document.getElementById('liveBusesCount').innerText = data.active_live_buses_count.toLocaleString();
 
         if (currentJourneys.length === 0) {
           document.getElementById('optionsList').innerHTML = `
-            <div class="p-4 bg-amber-950/40 border border-amber-800/80 rounded-lg text-xs text-amber-300">
-              No bus routes found connecting these stops directly within transfer limits.
+            <div class="p-3.5 rounded-lg text-xs surface-card" style="border-left: 3px solid var(--status-delay);">
+              No bus routes found connecting these stops within transfer limits.
             </div>
           `;
           return;
@@ -568,130 +1152,199 @@
 
         renderOptionsList();
         selectOption(0);
-
       } catch (e) {
         document.getElementById('loadingState').classList.add('hidden');
         document.getElementById('optionsList').innerHTML = `
-          <div class="p-4 bg-rose-950/40 border border-rose-800/80 rounded-lg text-xs text-rose-300">
+          <div class="p-3.5 rounded-lg text-xs surface-card" style="border-left: 3px solid var(--status-jam);">
             Network error querying transit planner: ${e.message}
           </div>
         `;
       }
     }
 
-    // Render Option Cards
+    // Render Journey Option Cards with Visual P85 Confidence Bar & Vertical Schematic
     function renderOptionsList() {
       const container = document.getElementById('optionsList');
+      const maxP85 = Math.max(...currentJourneys.map(o => o.p85_total_duration_mins || o.total_duration_mins), 1);
+
       container.innerHTML = currentJourneys.map((opt, i) => {
         const isSelected = i === selectedOptionId;
-        const xferBadge = opt.transfers === 0 ? 
-          `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-400 border border-emerald-800/60">Direct (0 transfers)</span>` :
-          `<span class="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-cyan-950/80 text-cyan-400 border border-cyan-800/60">${opt.transfers} Transfer</span>`;
-
+        const xferText = opt.transfers === 0 ? 'Direct' : `${opt.transfers} Transfer${opt.transfers > 1 ? 's' : ''}`;
         const hasCommonLines = opt.legs.some(l => l.is_common_line);
-        const clBadge = hasCommonLines ? 
-          `<span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-400 border border-amber-800/60 flex items-center space-x-1">
-             <span>⚡ Common Lines</span>
-           </span>` : '';
+
+        // Proportional arrival bar percentages
+        const ffMins = Math.min(opt.free_flow_duration_mins, opt.total_duration_mins);
+        const delayMins = Math.max(0, opt.total_duration_mins - ffMins);
+        const p85BufMins = Math.max(0, opt.p85_buffer_mins);
+
+        const ffPct = Math.round((ffMins / maxP85) * 100);
+        const delayPct = Math.round((delayMins / maxP85) * 100);
+        const p85Pct = Math.max(4, Math.round((p85BufMins / maxP85) * 100));
 
         const profileBadge = opt.profile_label ? `
-          <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${
-            opt.profile_label.includes('Reliable') ? 'bg-indigo-950/90 text-indigo-300 border border-indigo-700/80' :
-            opt.profile_label.includes('Walking') ? 'bg-teal-950/90 text-teal-300 border border-teal-700/80' :
-            'bg-emerald-950/90 text-emerald-300 border border-emerald-700/80'
-          } flex items-center space-x-1">
-            <span>${opt.profile_label.includes('Reliable') ? '🛡️' : opt.profile_label.includes('Walking') ? '🚶' : '⚡'} ${opt.profile_label}</span>
+          <span class="px-2 py-0.5 rounded text-[10px] font-mono font-semibold tracking-tight"
+                style="background-color: ${opt.profile_label.includes('Reliable') ? 'var(--route-single-tint)' : 'var(--accent-primary-tint)'};
+                       color: ${opt.profile_label.includes('Reliable') ? 'var(--route-single)' : 'var(--accent-primary)'};">
+            ${opt.profile_label}
+          </span>` : '';
+
+        const clBadge = hasCommonLines ? `
+          <span class="px-1.5 py-0.5 rounded text-[10px] font-mono font-semibold"
+                style="background-color: var(--accent-primary-tint); color: var(--accent-primary);">
+            Common-Lines
           </span>` : '';
 
         return `
-          <div onclick="selectOption(${i})" class="journey-card cursor-pointer p-3.5 rounded-xl border transition-all ${
-            isSelected ? 'bg-slate-800/90 border-cyan-500 ring-2 ring-cyan-500/20 shadow-xl' : 'bg-slate-950/60 hover:bg-slate-800/50 border-slate-800'
-          }">
-            
-            <!-- Card Header -->
-            <div class="flex items-start justify-between mb-2">
+          <div onclick="selectOption(${i})"
+               class="journey-card cursor-pointer rounded-lg p-3.5 transition-all surface-card"
+               style="border-color: ${isSelected ? 'var(--accent-primary)' : 'var(--border-hairline)'};
+                      box-shadow: ${isSelected ? '0 0 0 1.5px var(--accent-primary), var(--shadow-card)' : 'var(--shadow-sm)'};">
+
+            <!-- Card Header: Tabular Departure/Arrival & Profile Badges -->
+            <div class="flex items-start justify-between gap-2 mb-2.5">
               <div>
-                <div class="flex items-center space-x-2">
-                  <span class="text-sm font-bold text-slate-100">${opt.departure_time_ist} &rarr; ${opt.arrival_time_ist}</span>
-                  <span class="text-xs font-mono font-bold text-emerald-400">${opt.total_duration_mins.toFixed(0)}m</span>
+                <div class="flex items-baseline space-x-2">
+                  <span class="text-base font-bold font-mono tracking-tight" style="color: var(--ink-primary);">
+                    ${opt.departure_time_ist} &rarr; ${opt.arrival_time_ist}
+                  </span>
+                  <span class="text-xs font-mono font-semibold px-1.5 py-0.5 rounded" style="background-color: var(--bg-subtle); color: var(--ink-primary);">
+                    ${opt.total_duration_mins.toFixed(0)} min
+                  </span>
                 </div>
-                <div class="text-[11px] text-slate-400 flex items-center space-x-2 mt-0.5">
+                <div class="flex flex-wrap items-center gap-1.5 mt-1.5">
                   ${profileBadge}
-                  ${xferBadge}
+                  <span class="px-1.5 py-0.5 rounded text-[10px] font-mono" style="background-color: var(--bg-subtle); color: var(--ink-secondary);">
+                    ${xferText}
+                  </span>
                   ${clBadge}
                 </div>
               </div>
 
-              <!-- P85 Buffer Shield -->
-              <div class="text-right">
-                <div class="inline-flex items-center space-x-1 px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-300 border border-emerald-700/60 text-[10px] font-mono font-semibold">
-                  <svg class="w-3 h-3 text-emerald-400" fill="currentColor" viewBox="0 0 20 20">
-                    <path fill-rule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2.001A11.954 11.954 0 0110 1.944zM11 14a1 1 0 11-2 0 1 1 0 012 0zm0-7a1 1 0 10-2 0v3a1 1 0 102 0V7z" clip-rule="evenodd"/>
-                  </svg>
-                  <span>P85 Safe: ${opt.p85_arrival_time_ist}</span>
+              <!-- P85 Safe Arrival Readout -->
+              <div class="text-right shrink-0">
+                <div class="text-[10px] font-mono uppercase" style="color: var(--ink-muted);">P85 Reliable ETA</div>
+                <div class="text-xs font-mono font-bold" style="color: var(--accent-primary);">
+                  ${opt.p85_arrival_time_ist} <span class="font-normal text-[10px]" style="color: var(--ink-secondary);">(+${opt.p85_buffer_mins.toFixed(0)}m)</span>
                 </div>
-                <div class="text-[9px] text-slate-400 mt-0.5 font-mono">+${opt.p85_buffer_mins.toFixed(0)}m variance buffer</div>
               </div>
             </div>
 
-            <!-- Congestion Delay Alert -->
-            <div class="p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] flex items-center justify-between text-slate-300 font-mono mb-2">
-              <div class="flex items-center space-x-1.5 text-amber-300">
-                <svg class="w-3.5 h-3.5 text-amber-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
-                <span>+${opt.traffic_delay_mins.toFixed(0)}m congestion</span>
+            <!-- Visual Arrival-Range & P85 Confidence Interval Bar -->
+            <div class="p-2 rounded mb-3 space-y-1.5" style="background-color: var(--bg-subtle);">
+              <div class="flex items-center h-2 w-full rounded-sm overflow-hidden" style="background-color: var(--border-hairline);">
+                <div style="width: ${ffPct}%; background-color: var(--accent-primary);" class="h-full" title="05:30 Free-Flow Baseline: ${opt.free_flow_duration_mins.toFixed(0)}m"></div>
+                <div style="width: ${delayPct}%; background-color: var(--status-delay);" class="h-full" title="Diurnal Congestion Delay: +${opt.traffic_delay_mins.toFixed(0)}m"></div>
+                <div style="width: ${p85Pct}%;" class="h-full p85-hatch" title="P85 Correlated Variance Buffer: +${opt.p85_buffer_mins.toFixed(0)}m"></div>
               </div>
-              <span class="text-slate-400">05:30 Free-flow: ${opt.free_flow_duration_mins.toFixed(0)}m</span>
+              <div class="flex items-center justify-between text-[10px] font-mono" style="color: var(--ink-secondary);">
+                <span>05:30 Free-flow: <strong>${opt.free_flow_duration_mins.toFixed(0)}m</strong></span>
+                <span style="color: var(--status-delay);">+${opt.traffic_delay_mins.toFixed(0)}m traffic</span>
+                <span style="color: var(--accent-primary);">P85 buffer: +${opt.p85_buffer_mins.toFixed(0)}m</span>
+              </div>
             </div>
 
-            <!-- Legs Timeline -->
-            <div class="space-y-1.5 pt-1 border-t border-slate-800/80">
-              ${opt.legs.map((leg, lIdx) => renderLegTimelineItem(leg, lIdx)).join('')}
+            <!-- Schematic Vertical Transit Timeline -->
+            <div class="space-y-0 pt-1">
+              ${opt.legs.map((leg, lIdx) => renderLegTimelineItem(leg, lIdx, opt.legs.length)).join('')}
             </div>
 
+            <!-- Collapsible Mathematical & Stochastic P85 Breakdown Drawer -->
+            <details onclick="event.stopPropagation()" class="mt-2.5 pt-2 text-[11px]" style="border-top: 1px solid var(--border-hairline);">
+              <summary class="cursor-pointer font-mono text-[10px] font-semibold flex items-center justify-between select-none" style="color: var(--ink-muted);">
+                <span>Inspect Math &amp; Stochastic Variance (&sigma;, &kappa;, E[W])</span>
+                <span>&#9662;</span>
+              </summary>
+              <div class="mt-2 p-2.5 rounded font-mono text-[10px] space-y-1.5" style="background-color: var(--bg-subtle); color: var(--ink-secondary);">
+                <div class="grid grid-cols-2 gap-1.5">
+                  <div>05:30 Free-Flow (&mu;<sub>ff</sub>): <strong style="color: var(--ink-primary);">${opt.free_flow_duration_mins.toFixed(1)}m</strong></div>
+                  <div>Congestion (&Delta;&mu;): <strong style="color: var(--status-delay);">+${opt.traffic_delay_mins.toFixed(1)}m</strong></div>
+                  <div>Total Wait E[W]: <strong style="color: var(--ink-primary);">${opt.legs.reduce((acc, l) => acc + (l.wait_time_mins || 0), 0).toFixed(1)}m</strong></div>
+                  <div>In-Vehicle Ride: <strong style="color: var(--ink-primary);">${opt.legs.reduce((acc, l) => acc + (l.mode === 'BUS' ? l.in_vehicle_mins : 0), 0).toFixed(1)}m</strong></div>
+                  <div>Implied Subpath &sigma;<sub>J</sub>: <strong style="color: var(--ink-primary);">${(opt.p85_buffer_mins / 0.95).toFixed(1)}m</strong></div>
+                  <div>Lognormal P85 (&kappa;=0.95): <strong style="color: var(--accent-primary);">${opt.p85_total_duration_mins.toFixed(1)}m</strong></div>
+                </div>
+                <div class="pt-1 text-[9px]" style="border-top: 1px solid var(--border-hairline); color: var(--ink-muted);">
+                  V(i&rarr;j) = (1&minus;&rho;)&Sigma;&sigma;<sub>e</sub><sup>2</sup> + &rho;(&Sigma;&sigma;<sub>e</sub>)<sup>2</sup> &bull; &rho;=0.60 &bull; Welding E[W]=&frac12;E[H](1+CV<sup>2</sup>)
+                </div>
+              </div>
+            </details>
           </div>
         `;
       }).join('');
     }
 
-    function renderLegTimelineItem(leg, idx) {
+    function renderLegTimelineItem(leg, idx, totalLegs) {
+      const isLast = idx === totalLegs - 1;
       if (leg.mode === 'WALK') {
+        const walkTimeStr = leg.in_vehicle_mins < 0.2 ? '<1m' : `${leg.in_vehicle_mins.toFixed(1)}m`;
         return `
-          <div class="flex items-center space-x-2 text-[11px] text-slate-400 pl-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span>
-            <span class="font-medium text-slate-300">${leg.route_display}</span>
-            <span class="text-slate-500">&bull;</span>
-            <span class="truncate">${leg.from_stop_name} &rarr; ${leg.to_stop_name}</span>
+          <div onmouseenter="highlightMapLeg(${idx})" onmouseleave="highlightMapLeg(-1)"
+               class="flex items-start space-x-2.5 py-1.5 px-1 rounded transition hover:opacity-90">
+            <div class="flex flex-col items-center mt-1">
+              <span class="w-2 h-2 rounded-full border" style="border-color: var(--ink-muted); background-color: var(--bg-surface);"></span>
+              ${!isLast ? `<div class="w-px h-5 border-l border-dashed my-0.5" style="border-color: var(--ink-muted);"></div>` : ''}
+            </div>
+            <div class="flex-1 flex items-center justify-between text-[11px]">
+              <span class="font-medium truncate" style="color: var(--ink-secondary);">
+                Walk &bull; ${leg.from_stop_name} &rarr; ${leg.to_stop_name}
+              </span>
+              <span class="font-mono text-[10px] ml-2 shrink-0" style="color: var(--ink-muted);">
+                ${walkTimeStr}
+              </span>
+            </div>
           </div>
         `;
       }
 
-      const clText = leg.is_common_line ? 
-        `<span class="text-emerald-400 font-bold">[Take any: ${leg.routes.slice(0, 3).join('/')}]</span>` : 
-        `<span class="text-cyan-400 font-bold">${leg.routes[0] || 'Bus'}</span>`;
+      // Render tactile bus route plates
+      const spineColor = leg.is_common_line ? 'var(--accent-primary)' : 'var(--route-single)';
+      const plateBg = leg.is_common_line ? 'var(--accent-primary)' : 'var(--route-single)';
+      const routePlates = leg.routes.slice(0, 4).map(r => `
+        <span class="inline-block px-1.5 py-0.5 rounded-sm font-mono text-[10px] font-bold tracking-tight"
+              style="background-color: ${plateBg}; color: #FFFFFF;">
+          ${r}
+        </span>
+      `).join('');
+      const extraRoutes = leg.routes.length > 4 ? `<span class="text-[10px] font-mono" style="color: var(--ink-muted);">+${leg.routes.length - 4}</span>` : '';
 
       return `
-        <div class="p-2 rounded bg-slate-900/90 border border-slate-800/80 text-[11px] space-y-1">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center space-x-1.5">
-              <span class="w-2 h-2 rounded-full ${leg.is_common_line ? 'bg-emerald-400' : 'bg-cyan-400'}"></span>
-              ${clText}
-              <span class="text-slate-400 truncate">(${leg.stops_count} stops)</span>
-            </div>
-            <div class="text-[10px] font-mono text-slate-400">
-              Wait: <span class="text-slate-200">${leg.wait_time_mins.toFixed(1)}m</span> &bull; 
-              Ride: <span class="text-slate-200">${leg.in_vehicle_mins.toFixed(1)}m</span>
-            </div>
+        <div onmouseenter="highlightMapLeg(${idx})" onmouseleave="highlightMapLeg(-1)"
+             class="flex items-stretch space-x-2.5 py-1.5 px-1.5 rounded transition"
+             style="background-color: var(--bg-surface);">
+          <!-- Vertical Schematic Spine -->
+          <div class="flex flex-col items-center pt-1">
+            <span class="w-2.5 h-2.5 rounded-full border-2 shrink-0" style="border-color: ${spineColor}; background-color: var(--bg-surface);"></span>
+            <div class="w-1 flex-1 my-0.5 rounded-full" style="background-color: ${spineColor}; min-height: 28px;"></div>
+            ${isLast ? `<span class="w-2.5 h-2.5 rounded-sm shrink-0" style="background-color: var(--accent-secondary);"></span>` : ''}
           </div>
-          <div class="text-[10px] text-slate-400 truncate pl-3.5">
-            ${leg.from_stop_name} &rarr; ${leg.to_stop_name}
+
+          <!-- Leg Details -->
+          <div class="flex-1 min-w-0 pb-1">
+            <div class="flex items-center justify-between gap-1 flex-wrap">
+              <div class="flex items-center flex-wrap gap-1">
+                ${routePlates}
+                ${extraRoutes}
+                ${leg.is_common_line ? `<span class="text-[10px] font-mono font-medium ml-0.5" style="color: var(--accent-primary);">Board first of ${leg.routes.length}</span>` : ''}
+              </div>
+              <div class="text-[10px] font-mono shrink-0" style="color: var(--ink-secondary);">
+                Wait <strong style="color: var(--ink-primary);">${leg.wait_time_mins.toFixed(1)}m</strong> &bull;
+                Ride <strong style="color: var(--ink-primary);">${leg.in_vehicle_mins.toFixed(1)}m</strong>
+              </div>
+            </div>
+            <div class="flex items-center justify-between gap-2 mt-1">
+              <div class="text-[11px] font-medium truncate" style="color: var(--ink-primary);">
+                ${leg.from_stop_name} <span style="color: var(--ink-muted);">&rarr;</span> ${leg.to_stop_name}
+              </div>
+              <span class="px-1.5 py-0.5 rounded font-mono text-[10px] shrink-0" style="background-color: var(--bg-subtle); color: var(--ink-secondary);">
+                ${leg.stops_count} stops
+              </span>
+            </div>
           </div>
         </div>
       `;
     }
 
-    // Select and Map an Option
+    // Select and Plot a Journey Option on MapLibre
     function selectOption(idx) {
       selectedOptionId = idx;
       renderOptionsList();
@@ -699,13 +1352,40 @@
       const opt = currentJourneys[idx];
       if (!opt) return;
 
-      // Update GeoJSON layers
+      // Plot unselected alternative profile routes as clickable ghost polylines
+      const ghostFeatures = [];
+      currentJourneys.forEach((otherOpt, oIdx) => {
+        if (oIdx === idx) return;
+        otherOpt.legs.forEach(leg => {
+          if (leg.mode === 'BUS' && leg.geometry && leg.geometry.length >= 2) {
+            ghostFeatures.push({
+              type: 'Feature',
+              properties: {
+                option_idx: oIdx,
+                profile_label: otherOpt.profile_label || `Option ${oIdx + 1}`
+              },
+              geometry: {
+                type: 'LineString',
+                coordinates: leg.geometry
+              }
+            });
+          }
+        });
+      });
+      if (map && map.getSource('ghost-legs')) {
+        map.getSource('ghost-legs').setData({
+          type: 'FeatureCollection',
+          features: ghostFeatures
+        });
+      }
+
       const features = opt.legs.map(leg => ({
         type: 'Feature',
         properties: {
           mode: leg.mode,
           is_common_line: leg.is_common_line,
-          route_display: leg.route_display
+          route_display: leg.route_display,
+          highlighted: false
         },
         geometry: {
           type: 'LineString',
@@ -713,101 +1393,110 @@
         }
       }));
 
-      map.getSource('journey-legs').setData({
-        type: 'FeatureCollection',
-        features: features
-      });
+      if (map && map.getSource('journey-legs')) {
+        map.getSource('journey-legs').setData({
+          type: 'FeatureCollection',
+          features: features
+        });
+      }
 
-      // Clear existing markers
       legMarkers.forEach(m => m.remove());
       legMarkers = [];
 
-      // Collect bounding box points to zoom map
       const allCoords = [];
 
       opt.legs.forEach((leg, lIdx) => {
         allCoords.push(...leg.geometry);
 
-        // Marker for origin
+        // Origin terminal node
         if (lIdx === 0) {
           const el = document.createElement('div');
-          el.className = 'w-4 h-4 rounded-full bg-emerald-500 ring-4 ring-emerald-500/30 border-2 border-slate-900';
+          el.className = 'w-4 h-4 rounded-full border-2 shadow cursor-pointer';
+          el.style.backgroundColor = '#FFFFFF';
+          el.style.borderColor = '#0B6E5B';
+          el.style.borderWidth = '4px';
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat([leg.from_lon, leg.from_lat])
-            .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(`<div class="text-xs font-bold text-slate-900">Origin: ${leg.from_stop_name}</div>`))
+            .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(
+              `<div class="text-xs"><div class="text-[10px] font-mono uppercase" style="color: var(--ink-muted);">Origin Boarding</div><div class="font-bold">${leg.from_stop_name}</div></div>`
+            ))
             .addTo(map);
           legMarkers.push(marker);
         }
 
-        // Marker for alighting / destination
+        // Destination terminal node
         if (lIdx === opt.legs.length - 1) {
           const el = document.createElement('div');
-          el.className = 'w-4 h-4 rounded-full bg-rose-500 ring-4 ring-rose-500/30 border-2 border-slate-900';
+          el.className = 'w-3.5 h-3.5 rounded-sm border-2 shadow cursor-pointer';
+          el.style.backgroundColor = '#C84B1B';
+          el.style.borderColor = '#FFFFFF';
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat([leg.to_lon, leg.to_lat])
-            .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(`<div class="text-xs font-bold text-slate-900">Destination: ${leg.to_stop_name}</div>`))
+            .setPopup(new maplibregl.Popup({ offset: 12 }).setHTML(
+              `<div class="text-xs"><div class="text-[10px] font-mono uppercase" style="color: var(--ink-muted);">Final Alighting</div><div class="font-bold">${leg.to_stop_name}</div></div>`
+            ))
             .addTo(map);
           legMarkers.push(marker);
         } else if (leg.mode === 'BUS') {
-          // Transfer stop marker
+          // Intermediate transfer node
           const el = document.createElement('div');
-          el.className = 'w-3 h-3 rounded-full bg-cyan-400 ring-2 ring-cyan-400/40 border border-slate-900';
+          el.className = 'w-3 h-3 rounded-full border-2 shadow cursor-pointer';
+          el.style.backgroundColor = '#FFFFFF';
+          el.style.borderColor = '#1E4E8C';
           const marker = new maplibregl.Marker({ element: el })
             .setLngLat([leg.to_lon, leg.to_lat])
-            .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(`<div class="text-xs font-semibold text-slate-900">Transfer: ${leg.to_stop_name}</div>`))
+            .setPopup(new maplibregl.Popup({ offset: 10 }).setHTML(
+              `<div class="text-xs"><div class="text-[10px] font-mono uppercase" style="color: var(--ink-muted);">Transfer Hub</div><div class="font-semibold">${leg.to_stop_name}</div></div>`
+            ))
             .addTo(map);
           legMarkers.push(marker);
         }
       });
 
-      // Fit map bounds
       if (allCoords.length > 0) {
         const bounds = allCoords.reduce((b, coord) => b.extend(coord), new maplibregl.LngLatBounds(allCoords[0], allCoords[0]));
-        map.fitBounds(bounds, { padding: 60, maxZoom: 14 });
+        map.fitBounds(bounds, { padding: 70, maxZoom: 14 });
       }
 
-      // Filter live buses layer for routes used in this option
       const usedRoutes = opt.legs.filter(l => l.mode === 'BUS').flatMap(l => l.routes);
       if (usedRoutes.length > 0) {
         fetchLiveBuses(usedRoutes.join(','));
       }
     }
 
-    // Fetch and Plot Active Live Buses
+    // Fetch and Plot Active Live Buses on 60fps WebGL GeoJSON Layer
     async function fetchLiveBuses(routeFilter) {
       if (!liveBusesVisible) return;
       try {
-        let url = '/live/buses?limit=150';
+        let url = '/live/buses?limit=600';
         if (routeFilter) url += `&route_id=${encodeURIComponent(routeFilter)}`;
         const res = await fetch(url);
         if (!res.ok) return;
         const buses = await res.json();
 
-        // Clear existing live markers
-        liveBusMarkers.forEach(m => m.remove());
-        liveBusMarkers = [];
+        const features = buses.map(b => ({
+          type: 'Feature',
+          properties: {
+            vehicle_id: b.vehicle_id,
+            route_short_name: b.route_short_name,
+            speed: b.speed,
+            age_sec: b.age_sec
+          },
+          geometry: {
+            type: 'Point',
+            coordinates: [b.lon, b.lat]
+          }
+        }));
 
-        buses.forEach(b => {
-          const el = document.createElement('div');
-          el.className = 'w-3.5 h-3.5 bg-amber-400 rounded-full border border-slate-900 shadow-md flex items-center justify-center cursor-pointer hover:scale-125 transition-transform';
-          el.innerHTML = '<span class="w-1.5 h-1.5 bg-slate-950 rounded-full"></span>';
-
-          const popupHtml = `
-            <div class="text-xs p-1 text-slate-900 font-sans">
-              <div class="font-bold text-amber-700">${b.route_short_name} &bull; ${b.vehicle_id}</div>
-              <div class="text-[10px] text-slate-600">Speed: ${b.speed.toFixed(1)} km/h</div>
-              <div class="text-[10px] text-slate-500 font-mono">Ping age: ${b.age_sec.toFixed(0)}s ago</div>
-            </div>
-          `;
-
-          const marker = new maplibregl.Marker({ element: el })
-            .setLngLat([b.lon, b.lat])
-            .setPopup(new maplibregl.Popup({ offset: 8 }).setHTML(popupHtml))
-            .addTo(map);
-
-          liveBusMarkers.push(marker);
-        });
-
+        if (map && map.getSource('live-buses-source')) {
+          map.getSource('live-buses-source').setData({
+            type: 'FeatureCollection',
+            features: features
+          });
+          if (map.getLayer('live-buses-layer')) {
+            map.setLayoutProperty('live-buses-layer', 'visibility', 'visible');
+          }
+        }
       } catch (e) {
         console.warn("Could not fetch live vehicles:", e);
       }
@@ -815,39 +1504,18 @@
 
     let trafficCorridorsVisible = false;
 
-    async function toggleTrafficCorridorsLayer() {
-      trafficCorridorsVisible = !trafficCorridorsVisible;
-      const btn = document.getElementById('toggleTrafficCorridorsBtn');
-      const dot = document.getElementById('trafficCorridorDot');
-      const panel = document.getElementById('trafficLegendPanel');
-
-      if (!trafficCorridorsVisible) {
-        dot.className = 'w-2 h-2 rounded-full bg-slate-500';
-        btn.classList.remove('border-amber-500', 'text-amber-400');
-        panel.classList.add('hidden');
-        if (map.getLayer('traffic-corridors-lines')) {
-          map.setLayoutProperty('traffic-corridors-lines', 'visibility', 'none');
-        }
-        return;
-      }
-
-      dot.className = 'w-2 h-2 rounded-full bg-amber-400 animate-pulse';
-      btn.classList.add('border-amber-500', 'text-amber-400');
-      panel.classList.remove('hidden');
-
+    async function refreshTrafficCorridorsData() {
       const depart = document.getElementById('customTimeInput').value.trim() || 'now';
       try {
         const res = await fetch(`/live/traffic-corridors?depart=${encodeURIComponent(depart)}`);
         if (!res.ok) throw new Error('Failed to fetch traffic corridors');
         const data = await res.json();
 
-        // Update counts
         document.getElementById('provenanceLiveCount').innerText = data.summary.live_count.toLocaleString();
         document.getElementById('provenanceHistCount').innerText = data.summary.observed_hist_count.toLocaleString();
         document.getElementById('provenancePriorCount').innerText = data.summary.prior_count.toLocaleString();
         document.getElementById('trafficTimeLabel').innerText = (data.summary.depart_ist || depart).slice(-12);
 
-        // Add or update MapLibre GeoJSON source & layer
         if (!map.getSource('traffic-corridors-source')) {
           map.addSource('traffic-corridors-source', {
             type: 'geojson',
@@ -867,42 +1535,46 @@
               'line-color': [
                 'step',
                 ['get', 'ratio'],
-                '#10b981', // green < 1.15
-                1.15, '#f59e0b', // amber 1.15-1.40
-                1.40, '#ef4444'  // red > 1.40
+                '#0E835C',
+                1.15, '#C2740C',
+                1.40, '#C92A2A'
               ],
               'line-width': [
                 'match',
                 ['get', 'provenance'],
-                'LIVE', 3.5,
-                'OBSERVED_HIST', 2.5,
-                /* PRIOR */ 1.8
+                'LIVE', 3.4,
+                'OBSERVED_HIST', 2.4,
+                1.6
               ],
               'line-opacity': [
                 'match',
                 ['get', 'provenance'],
-                'LIVE', 0.95,
-                'OBSERVED_HIST', 0.65,
-                /* PRIOR */ 0.35
+                'LIVE', 0.92,
+                'OBSERVED_HIST', 0.68,
+                0.38
               ]
             }
-          });
+          }, 'bus-legs-casing');
 
-          // Add click popup for corridor inspection
           map.on('click', 'traffic-corridors-lines', (e) => {
             if (!e.features || e.features.length === 0) return;
             const props = e.features[0].properties;
+            const statusColor = props.ratio >= 1.4 ? 'var(--status-jam)' : props.ratio >= 1.15 ? 'var(--status-delay)' : 'var(--status-free)';
             const popupHtml = `
-              <div class="text-xs p-1 text-slate-900 font-sans">
-                <div class="font-bold text-slate-900 font-mono">${props.corridor_id}</div>
-                <div class="text-[11px] font-semibold ${props.ratio >= 1.4 ? 'text-rose-600' : props.ratio >= 1.15 ? 'text-amber-600' : 'text-emerald-600'}">
+              <div class="text-xs space-y-1">
+                <div class="flex items-center justify-between space-x-3">
+                  <span class="font-bold font-mono text-[11px]">${props.corridor_id}</span>
+                  <span class="px-1.5 py-0.5 rounded font-mono text-[10px] font-bold" style="background-color: var(--bg-subtle);">${props.provenance}</span>
+                </div>
+                <div class="text-xs font-mono font-bold" style="color: ${statusColor};">
                   Congestion Ratio: ${props.ratio}x
                 </div>
-                <div class="text-[10px] text-slate-600">Provenance: <span class="font-bold">${props.provenance}</span></div>
-                <div class="text-[10px] text-slate-500 font-mono">Time: ${props.t_hat_sec}s (Free-flow: ${props.free_flow_sec}s)</div>
+                <div class="text-[10px] font-mono" style="color: var(--ink-secondary);">
+                  Predicted: ${props.t_hat_sec}s &bull; 05:30 Free-flow: ${props.free_flow_sec}s
+                </div>
               </div>
             `;
-            new maplibregl.Popup({ offset: 5 })
+            new maplibregl.Popup({ offset: 6 })
               .setLngLat(e.lngLat)
               .setHTML(popupHtml)
               .addTo(map);
@@ -923,25 +1595,59 @@
       }
     }
 
+    async function toggleTrafficCorridorsLayer() {
+      trafficCorridorsVisible = !trafficCorridorsVisible;
+      const btn = document.getElementById('toggleTrafficCorridorsBtn');
+      const dot = document.getElementById('trafficCorridorDot');
+      const panel = document.getElementById('trafficLegendPanel');
+
+      if (!trafficCorridorsVisible) {
+        dot.style.backgroundColor = 'var(--ink-muted)';
+        btn.style.backgroundColor = '';
+        panel.classList.add('hidden');
+        if (map && map.getLayer('traffic-corridors-lines')) {
+          map.setLayoutProperty('traffic-corridors-lines', 'visibility', 'none');
+        }
+        return;
+      }
+
+      dot.style.backgroundColor = 'var(--status-delay)';
+      btn.style.backgroundColor = 'var(--bg-subtle)';
+      panel.classList.remove('hidden');
+      await refreshTrafficCorridorsData();
+    }
+
     function toggleLiveBusesLayer() {
       liveBusesVisible = !liveBusesVisible;
       const btn = document.getElementById('toggleLiveBusesBtn');
+      const dot = document.getElementById('liveBusesDot');
       if (liveBusesVisible) {
         btn.classList.remove('opacity-50');
+        dot.style.backgroundColor = 'var(--accent-secondary)';
         fetchLiveBuses();
       } else {
         btn.classList.add('opacity-50');
-        liveBusMarkers.forEach(m => m.remove());
-        liveBusMarkers = [];
+        dot.style.backgroundColor = 'var(--ink-muted)';
+        if (map && map.getLayer('live-buses-layer')) {
+          map.setLayoutProperty('live-buses-layer', 'visibility', 'none');
+        }
       }
     }
 
-    // Initialize on window load
+    // Close autocomplete dropdowns on outside click
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#originInput') && !e.target.closest('#originDropdown')) {
+        document.getElementById('originDropdown').classList.add('hidden');
+      }
+      if (!e.target.closest('#destInput') && !e.target.closest('#destDropdown')) {
+        document.getElementById('destDropdown').classList.add('hidden');
+      }
+    });
+
     window.addEventListener('DOMContentLoaded', () => {
       initMap();
-      // Set current IST time display
       const now = new Date();
-      document.getElementById('currentTimeDisplay').innerText = `Current: ${now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
+      document.getElementById('currentTimeDisplay').innerText = `IST ${now.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: false })}`;
     });
   </script>
 </body>

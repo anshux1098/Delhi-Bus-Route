@@ -1,8 +1,8 @@
 """Delhi GTFS-Realtime Ingestion Setup Check.
 
 Verifies end-to-end setup:
-1. Loads .env and fetches a snapshot of VehiclePositions.pb from OTD_RT_URL
-   (fallback to TRANSPORT_STACK_API_URL if needed).
+1. Loads .env and fetches a snapshot of VehiclePositions.pb from TRANSPORT_STACK_API_URL
+   (automatic fallback to OTD_RT_URL if needed).
 2. Parses protobuf bytes with google.transit.gtfs_realtime_pb2.FeedMessage.
 3. Computes ist_time with fixed UTC+05:30 offset (Windows tz safe).
 4. Extracts all vehicle entities into a Polars DataFrame with columns:
@@ -80,11 +80,11 @@ def compute_ist_time(ts: int | None) -> str | None:
 
 
 def fetch_gtfs_rt_snapshot() -> bytes:
-    """Fetch VehiclePositions.pb from OTD_RT_URL or fallback to TRANSPORT_STACK_API_URL."""
+    """Fetch VehiclePositions.pb from TRANSPORT_STACK_API_URL (primary) or fallback to OTD_RT_URL."""
     if ENV_PATH.exists():
-        load_dotenv(ENV_PATH)
+        load_dotenv(ENV_PATH, override=True)
     else:
-        load_dotenv()
+        load_dotenv(override=True)
 
     otd_url = os.getenv("OTD_RT_URL", "").strip()
     stack_url = os.getenv("TRANSPORT_STACK_API_URL", "").strip()
@@ -92,39 +92,43 @@ def fetch_gtfs_rt_snapshot() -> bytes:
 
     headers = {"User-Agent": "delhi-transit-planner/0.1 (setup-check)"}
 
-    # 1. Try primary OTD_RT_URL
-    if otd_url and "PASTE_" not in otd_url:
-        masked_url = otd_url.split("key=")[0] + "key=***" if "key=" in otd_url else otd_url
-        print(f"Fetching live snapshot from OTD_RT_URL: {masked_url}")
-        try:
-            with httpx.Client(timeout=20.0, follow_redirects=True, headers=headers) as client:
+    has_valid_stack = (
+        bool(stack_url)
+        and "PASTE_" not in stack_url
+        and bool(stack_key)
+        and "PASTE_" not in stack_key
+        and "your_" not in stack_key.lower()
+    )
+
+    # 1. Try primary TRANSPORT_STACK_API_URL then fallback OTD_RT_URL using one pooled client
+    with httpx.Client(timeout=20.0, follow_redirects=True, headers=headers) as client:
+        if has_valid_stack:
+            print(f"Fetching live snapshot from PRIMARY (TRANSPORT_STACK_API_URL): {stack_url}")
+            try:
+                response = client.get(stack_url, headers={"x-api-key": stack_key})
+                response.raise_for_status()
+                if len(response.content) > 1000 and not response.content.startswith(b"<!doctype"):
+                    print(f"[OK] [PRIMARY: Transport Stack] Received {len(response.content):,} bytes.")
+                    return response.content
+                print(
+                    f"[WARN] Transport Stack response appears non-protobuf ({len(response.content)} bytes). "
+                    "Trying fallback..."
+                )
+            except Exception as exc:
+                print(f"[WARN] Primary TRANSPORT_STACK_API_URL fetch failed: {exc}. Trying fallback...")
+
+        if otd_url and "PASTE_" not in otd_url:
+            masked_url = otd_url.split("key=")[0] + "key=***" if "key=" in otd_url else otd_url
+            print(f"Fetching live snapshot from FALLBACK (OTD_RT_URL): {masked_url}")
+            try:
                 response = client.get(otd_url)
                 response.raise_for_status()
-                # Basic sanity check: protobuf payload is binary and reasonably sized
                 if len(response.content) > 1000 and not response.content.startswith(b"<!doctype"):
-                    print(f"[OK] Received {len(response.content):,} bytes from OTD.")
+                    print(f"[OK] [FALLBACK: OTD_RT_URL] Received {len(response.content):,} bytes.")
                     return response.content
-                print(f"[WARN] OTD response appears non-protobuf ({len(response.content)} bytes). Trying fallback...")
-        except Exception as exc:
-            print(f"[WARN] Primary OTD_RT_URL fetch failed: {exc}. Trying fallback...")
-
-    # 2. Try fallback TRANSPORT_STACK_API_URL
-    if stack_url and "PASTE_" not in stack_url:
-        print(f"Fetching live snapshot from TRANSPORT_STACK_API_URL: {stack_url}")
-        stack_headers = dict(headers)
-        if stack_key and "PASTE_" not in stack_key:
-            stack_headers["x-api-key"] = stack_key
-
-        try:
-            with httpx.Client(timeout=20.0, follow_redirects=True, headers=stack_headers) as client:
-                response = client.get(stack_url)
-                response.raise_for_status()
-                if len(response.content) > 1000 and not response.content.startswith(b"<!doctype"):
-                    print(f"[OK] Received {len(response.content):,} bytes from Transport Stack.")
-                    return response.content
-                print(f"[WARN] Transport Stack response invalid ({len(response.content)} bytes).")
-        except Exception as exc:
-            print(f"[WARN] Fallback TRANSPORT_STACK_API_URL fetch failed: {exc}")
+                print(f"[WARN] OTD response appears non-protobuf ({len(response.content)} bytes).")
+            except Exception as exc:
+                print(f"[WARN] Fallback OTD_RT_URL fetch failed: {exc}")
 
     raise RuntimeError("Failed to fetch valid GTFS-Realtime protobuf feed from configured URLs.")
 
@@ -135,54 +139,69 @@ def parse_vehicle_positions(payload: bytes) -> tuple[int, pl.DataFrame]:
     feed.ParseFromString(payload)
 
     feed_ts = int(feed.header.timestamp) if feed.header.HasField("timestamp") else 0
-    rows: list[dict[str, Any]] = []
+    default_ts = feed_ts if feed_ts > 0 else 0
+    ts_cache: dict[int, str | None] = {0: None}
+    isnan_or_inf = math.isfinite
+
+    vehicle_ids: list[str | None] = []
+    route_ids: list[str | None] = []
+    trip_ids: list[str | None] = []
+    latitudes: list[float | None] = []
+    longitudes: list[float | None] = []
+    bearings: list[float | None] = []
+    speeds: list[float | None] = []
+    timestamps: list[int] = []
+    ist_times: list[str | None] = []
 
     for entity in feed.entity:
         if not entity.HasField("vehicle"):
             continue
 
         vehicle = entity.vehicle
-        pos = vehicle.position if vehicle.HasField("position") else None
-
-        lat = float(pos.latitude) if (pos and pos.HasField("latitude") and math.isfinite(pos.latitude)) else None
-        lon = float(pos.longitude) if (pos and pos.HasField("longitude") and math.isfinite(pos.longitude)) else None
-        bearing = float(pos.bearing) if (pos and pos.HasField("bearing") and math.isfinite(pos.bearing)) else None
-        speed = float(pos.speed) if (pos and pos.HasField("speed") and math.isfinite(pos.speed)) else None
+        if vehicle.HasField("position"):
+            pos = vehicle.position
+            lat = float(pos.latitude) if (pos.HasField("latitude") and isnan_or_inf(pos.latitude)) else None
+            lon = float(pos.longitude) if (pos.HasField("longitude") and isnan_or_inf(pos.longitude)) else None
+            bearing = float(pos.bearing) if (pos.HasField("bearing") and isnan_or_inf(pos.bearing)) else None
+            speed = float(pos.speed) if (pos.HasField("speed") and isnan_or_inf(pos.speed)) else None
+        else:
+            lat = lon = bearing = speed = None
 
         vid = vehicle.vehicle.id or vehicle.vehicle.label or entity.id or None
-        route_id = vehicle.trip.route_id if (vehicle.HasField("trip") and vehicle.trip.route_id) else None
-        trip_id = vehicle.trip.trip_id if (vehicle.HasField("trip") and vehicle.trip.trip_id) else None
+        has_trip = vehicle.HasField("trip")
+        route_id = vehicle.trip.route_id if (has_trip and vehicle.trip.route_id) else None
+        trip_id = vehicle.trip.trip_id if (has_trip and vehicle.trip.trip_id) else None
 
-        # Timestamp: raw Int64 Unix epoch seconds
-        ts = int(vehicle.timestamp) if vehicle.timestamp > 0 else (feed_ts if feed_ts > 0 else 0)
-        ist_time = compute_ist_time(ts)
+        ts = int(vehicle.timestamp) if vehicle.timestamp > 0 else default_ts
+        ist_time = ts_cache.get(ts)
+        if ist_time is None and ts > 0:
+            ist_time = compute_ist_time(ts)
+            ts_cache[ts] = ist_time
 
-        rows.append({
-            "vehicle_id": str(vid) if vid is not None else None,
-            "route_id": str(route_id) if route_id is not None else None,
-            "trip_id": str(trip_id) if trip_id is not None else None,
-            "latitude": lat,
-            "longitude": lon,
-            "bearing": bearing,
-            "speed": speed,
-            "timestamp": ts,
-            "ist_time": ist_time,
-        })
+        vehicle_ids.append(str(vid) if vid is not None else None)
+        route_ids.append(str(route_id) if route_id is not None else None)
+        trip_ids.append(str(trip_id) if trip_id is not None else None)
+        latitudes.append(lat)
+        longitudes.append(lon)
+        bearings.append(bearing)
+        speeds.append(speed)
+        timestamps.append(ts)
+        ist_times.append(ist_time)
 
-    df = pl.DataFrame(rows, schema=VEHICLE_SCHEMA, strict=False)
-    # Ensure exact column ordering
-    col_order = [
-        "vehicle_id",
-        "route_id",
-        "trip_id",
-        "latitude",
-        "longitude",
-        "bearing",
-        "speed",
-        "timestamp",
-        "ist_time",
-    ]
-    df = df.select(col_order)
+    df = pl.DataFrame(
+        {
+            "vehicle_id": vehicle_ids,
+            "route_id": route_ids,
+            "trip_id": trip_ids,
+            "latitude": latitudes,
+            "longitude": longitudes,
+            "bearing": bearings,
+            "speed": speeds,
+            "timestamp": timestamps,
+            "ist_time": ist_times,
+        },
+        schema=VEHICLE_SCHEMA,
+    )
     return feed_ts, df
 
 
@@ -235,8 +254,8 @@ def main() -> int:
     print(f"Static Routes (First 5 rows from {routes_file.name}):")
     print("-----------------------------------------------------------------")
     if routes_file.exists():
-        routes_df = pl.read_csv(routes_file)
-        print(routes_df.head(5))
+        routes_df = pl.read_csv(routes_file, n_rows=5)
+        print(routes_df)
     else:
         print(f"[WARN] File not found: {routes_file}")
 
@@ -244,8 +263,8 @@ def main() -> int:
     print(f"Static Trips (First 5 rows from {trips_file.name}):")
     print("-----------------------------------------------------------------")
     if trips_file.exists():
-        trips_df = pl.read_csv(trips_file)
-        print(trips_df.head(5))
+        trips_df = pl.read_csv(trips_file, n_rows=5)
+        print(trips_df)
     else:
         print(f"[WARN] File not found: {trips_file}")
 

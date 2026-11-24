@@ -404,7 +404,7 @@ def build_eb_prior(
         if OBSERVED_SEGMENTS_PATH.exists():
             observed_df = pl.read_parquet(OBSERVED_SEGMENTS_PATH)
         else:
-            observed_df = consolidate_observed_segments()
+            observed_df, _ = consolidate_observed_segments()
 
     if catalog_df is None and CATALOG_PATH.exists():
         catalog_df = pl.read_parquet(CATALOG_PATH)
@@ -557,8 +557,8 @@ def main() -> int:
     print("Building Delhi GTFS Historical Baseline & Empirical Bayes Prior")
     print("=================================================================")
 
-    # 1. Consolidate observed segments
-    observed_df = consolidate_observed_segments()
+    # 1. Consolidate observed segments and spans
+    observed_df, _ = consolidate_observed_segments()
 
     # 2. Build EB prior
     prior = build_eb_prior(observed_df)

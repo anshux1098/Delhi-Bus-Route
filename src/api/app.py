@@ -51,6 +51,7 @@ if sys.stdout and hasattr(sys.stdout, "reconfigure"):
 PROJECT_ROOT = find_project_root()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 INDEX_HTML = STATIC_DIR / "index.html"
+LEARN_HTML = STATIC_DIR / "learn.html"
 LATEST_VEHICLES_PATH = PROJECT_ROOT / "data" / "live_buffer" / "latest_vehicles.parquet"
 OBSERVED_SEGMENTS_PATH = PROJECT_ROOT / "data" / "processed" / "observed_segments.parquet"
 
@@ -191,8 +192,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     )
     print(f"[STARTUP] Snapped {live_index.n_vehicles} live vehicles into LiveVehicleIndex")
 
-    # Initialize CommonLinesRaptor
+    # Initialize CommonLinesRaptor and pre-warm horizon tensor cache so first UI query is <50ms
     raptor = CommonLinesRaptor(graph=transit_graph, tracker=tracker)
+    try:
+        raptor.plan_journey("4696", "601", 1794193200.0, live_vehicles=live_index)
+    except Exception:
+        pass
 
     # Pre-build fast stop autocomplete search index
     stop_search_index = []
@@ -273,6 +278,14 @@ async def serve_dashboard() -> FileResponse:
     if not INDEX_HTML.exists():
         raise HTTPException(status_code=404, detail="Dashboard index.html not found.")
     return FileResponse(str(INDEX_HTML))
+
+
+@app.get("/learn", response_class=FileResponse)
+async def serve_learn_masterclass() -> FileResponse:
+    """Serve the First-Principles Systems & ML Engineering Masterclass workbook."""
+    if not LEARN_HTML.exists():
+        raise HTTPException(status_code=404, detail="Masterclass learn.html not found.")
+    return FileResponse(str(LEARN_HTML))
 
 
 @app.get("/health")

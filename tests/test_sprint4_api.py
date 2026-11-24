@@ -414,10 +414,38 @@ def test_6_upgrade_4b_live_traffic_corridors_endpoint(client: TestClient) -> Non
         assert 76.5 <= lon <= 77.8
         assert 28.0 <= lat <= 29.2
 
-    # Verify UI contains traffic layer controls
+    # Verify UI contains traffic layer controls and link to /learn masterclass
     r_ui = client.get("/")
     assert r_ui.status_code == 200
     html = r_ui.text
     assert "toggleTrafficCorridorsLayer" in html
     assert "traffic-corridors" in html
     assert "Traffic Sensor Layer" in html
+    assert "/learn" in html
+
+
+def test_learn_masterclass_endpoint(client: TestClient) -> None:
+    """Verify GET /learn returns HTTP 200 and contains all 5 interactive masterclass modules."""
+    res = client.get("/learn")
+    assert res.status_code == 200
+    assert "text/html" in res.headers["content-type"]
+    html = res.text
+
+    for marker in (
+        'id="module-1"',
+        'id="module-2"',
+        'id="module-3"',
+        'id="module-4"',
+        'id="module-5"',
+        "Sandbox 1A",
+        "Sandbox 1B",
+        "Sandbox 2A",
+        "Sandbox 2B",
+        "Sandbox 3A",
+        "Sandbox 3B",
+        "Sandbox 4A",
+        "Sandbox 4B",
+        "Sandbox 5A",
+        "Sandbox 5B",
+    ):
+        assert marker in html, f"Missing expected masterclass marker: {marker}"

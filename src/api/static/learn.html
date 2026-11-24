@@ -1,0 +1,2816 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>First-Principles Systems &amp; ML Masterclass — Delhi Transit Engine</title>
+  <!-- Tailwind CSS (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- KaTeX (CDN) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <!-- Google Fonts: Instrument Sans & IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['"Instrument Sans"', 'system-ui', 'sans-serif'],
+            mono: ['"IBM Plex Mono"', 'monospace'],
+          },
+        },
+      },
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Instrument Sans', system-ui, sans-serif;
+      background-color: #0D0E11;
+      color: #E5E7EB;
+    }
+    .font-mono, code, pre {
+      font-family: 'IBM Plex Mono', monospace;
+      font-variant-numeric: tabular-nums;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #9CA3AF; border-radius: 3px; }
+    input[type="range"] {
+      accent-color: #0B6E5B;
+      cursor: pointer;
+    }
+    .katex { font-size: 1.02em; }
+    .katex-display { margin: 0.65rem 0; overflow-x: auto; overflow-y: hidden; }
+    .workbook-grid {
+      background-image:
+        linear-gradient(to right, rgba(120, 125, 135, 0.14) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(120, 125, 135, 0.14) 1px, transparent 1px);
+      background-size: 28px 28px;
+    }
+    canvas {
+      touch-action: none;
+      background-color: #0F1319;
+      border-radius: 6px;
+    }
+    .nav-pill.active {
+      background: rgba(11, 110, 91, 0.14);
+      border-color: #0B6E5B !important;
+      color: #0B6E5B !important;
+    }
+    [data-theme="dark"] .nav-pill.active {
+      background: rgba(25, 169, 141, 0.16);
+      border-color: #19A98D !important;
+      color: #5EEAD4 !important;
+    }
+
+    /* Cartographic Paper Light Mode overrides */
+    [data-theme="light"] body {
+      background-color: #F5F3EE !important;
+      color: #111315 !important;
+    }
+    [data-theme="light"] .bg-slate-900,
+    [data-theme="light"] .bg-slate-900\/80,
+    [data-theme="light"] .bg-slate-900\/70,
+    [data-theme="light"] .bg-slate-900\/60,
+    [data-theme="light"] .bg-slate-900\/50 {
+      background-color: #FFFFFF !important;
+    }
+    [data-theme="light"] .bg-slate-950,
+    [data-theme="light"] .bg-slate-950\/90,
+    [data-theme="light"] .bg-slate-950\/80,
+    [data-theme="light"] .bg-slate-950\/70,
+    [data-theme="light"] .bg-slate-950\/60 {
+      background-color: #FAF9F5 !important;
+    }
+    [data-theme="light"] .bg-slate-800,
+    [data-theme="light"] .bg-slate-800\/90,
+    [data-theme="light"] .bg-slate-800\/80,
+    [data-theme="light"] .bg-slate-800\/60 {
+      background-color: #ECE9E1 !important;
+    }
+    [data-theme="light"] .text-slate-100,
+    [data-theme="light"] .text-slate-200,
+    [data-theme="light"] .text-white {
+      color: #111315 !important;
+    }
+    [data-theme="light"] .text-slate-300,
+    [data-theme="light"] .text-slate-400 {
+      color: #4A5058 !important;
+    }
+    [data-theme="light"] .text-slate-500 {
+      color: #747A82 !important;
+    }
+    [data-theme="light"] .border-slate-800,
+    [data-theme="light"] .border-slate-800\/80,
+    [data-theme="light"] .border-slate-700,
+    [data-theme="light"] .border-slate-700\/60 {
+      border-color: #DFDCD3 !important;
+    }
+    [data-theme="light"] .text-cyan-300,
+    [data-theme="light"] .text-cyan-400 {
+      color: #1E4E8C !important;
+    }
+    [data-theme="light"] .text-emerald-300,
+    [data-theme="light"] .text-emerald-400 {
+      color: #0B6E5B !important;
+    }
+    [data-theme="light"] .text-amber-300,
+    [data-theme="light"] .text-amber-400 {
+      color: #B84A14 !important;
+    }
+    [data-theme="light"] pre {
+      background-color: #14171C !important;
+      color: #E5E7EB !important;
+    }
+    [data-theme="light"] pre code,
+    [data-theme="light"] pre span {
+      color: #E5E7EB !important;
+    }
+    [data-theme="light"] .katex {
+      color: #111315 !important;
+    }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 antialiased selection:bg-teal-500/20">
+
+  <!-- Editorial Top Sticky Header -->
+  <header class="sticky top-0 z-40 h-14 bg-slate-950/90 backdrop-blur-md border-b border-slate-800 px-4 lg:px-6 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <a href="/" class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-slate-800/90 border border-slate-700 text-xs font-semibold text-slate-200 transition hover:opacity-85">
+        <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        <span>Back to Live Planner</span>
+      </a>
+      <div class="h-5 w-px bg-slate-800 hidden sm:block"></div>
+      <div class="flex items-center gap-2.5">
+        <div class="w-7 h-7 rounded flex items-center justify-center font-mono font-bold text-xs" style="background-color: #0B6E5B; color: #FFFFFF;">
+          &Sigma;
+        </div>
+        <div>
+          <h1 class="text-xs sm:text-sm font-bold tracking-tight text-slate-100">
+            FIRST-PRINCIPLES SYSTEMS &amp; ML MASTERCLASS
+          </h1>
+          <p class="text-[10px] text-slate-400 font-mono hidden sm:block">
+            DELHI TRANSIT ENGINE &bull; INTERACTIVE MATH, MEMORY LAYOUT &amp; ALGORITHMS WORKBOOK
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Jump Pills on Desktop -->
+    <nav class="hidden xl:flex items-center gap-1.5 text-[11px] font-mono">
+      <a href="#module-1" class="nav-pill px-2.5 py-1 rounded border border-slate-800 text-slate-400 transition">M1: CSR &amp; Protobuf</a>
+      <a href="#module-2" class="nav-pill px-2.5 py-1 rounded border border-slate-800 text-slate-400 transition">M2: 1D &amp; PAVA</a>
+      <a href="#module-3" class="nav-pill px-2.5 py-1 rounded border border-slate-800 text-slate-400 transition">M3: EB &amp; Gamma</a>
+      <a href="#module-4" class="nav-pill px-2.5 py-1 rounded border border-slate-800 text-slate-400 transition">M4: Tensors &amp; O(1)</a>
+      <a href="#module-5" class="nav-pill px-2.5 py-1 rounded border border-slate-800 text-slate-400 transition">M5: RAPTOR &amp; Poisson</a>
+    </nav>
+
+    <div class="flex items-center gap-2 text-[11px] font-mono">
+      <span class="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-400 font-semibold">
+        5 Modules &bull; 10 Sandboxes
+      </span>
+      <button onclick="const root=document.documentElement; const next=root.getAttribute('data-theme')==='light'?'dark':'light'; root.setAttribute('data-theme',next); localStorage.setItem('dt_theme',next);"
+              title="Toggle Light / Dark Theme"
+              class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-slate-200 font-sans font-semibold text-xs cursor-pointer">
+        Theme
+      </button>
+    </div>
+  </header>
+  <script>
+    (function() {
+      const saved = localStorage.getItem('dt_theme') || 'light';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
+
+  <!-- Main Shell: Left Workbook Index + Content -->
+  <div class="max-w-[1600px] mx-auto flex flex-col lg:flex-row">
+
+    <!-- Left Sticky Syllabus Sidebar -->
+    <aside class="lg:w-72 shrink-0 lg:sticky lg:top-14 lg:h-[calc(100vh-3.5rem)] overflow-y-auto border-b lg:border-b-0 lg:border-r border-slate-800 bg-slate-950/60 p-4 space-y-5">
+      <div>
+        <div class="text-[10px] font-mono uppercase tracking-widest text-slate-400 mb-2">Notebook Blueprint</div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Every module breaks a production bottleneck into <span class="text-cyan-300 font-semibold">4 reusable building blocks</span>:
+          Intuition &amp; Flowchart, 60fps Interactive Sandbox, 15-Line Python Pattern, and Exact Repo Wiring.
+        </p>
+      </div>
+
+      <div class="space-y-1.5" id="sidebarNav">
+        <a href="#module-1" data-target="module-1" class="nav-pill active block p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-cyan-500/50 transition">
+          <div class="flex items-center justify-between text-[10px] font-mono text-cyan-400">
+            <span>MODULE 01</span><span>MEMORY &amp; STREAM</span>
+          </div>
+          <div class="text-xs font-bold text-slate-100 mt-0.5">Architecture, Protobuf, CSR &amp; Numba</div>
+        </a>
+        <a href="#module-2" data-target="module-2" class="nav-pill block p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-emerald-500/50 transition">
+          <div class="flex items-center justify-between text-[10px] font-mono text-emerald-400">
+            <span>MODULE 02</span><span>GEOMETRY &amp; PAVA</span>
+          </div>
+          <div class="text-xs font-bold text-slate-100 mt-0.5">1D Referencing &amp; Isotonic Cleaning</div>
+        </a>
+        <a href="#module-3" data-target="module-3" class="nav-pill block p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-amber-500/50 transition">
+          <div class="flex items-center justify-between text-[10px] font-mono text-amber-400">
+            <span>MODULE 03</span><span>APPLIED ML</span>
+          </div>
+          <div class="text-xs font-bold text-slate-100 mt-0.5">Empirical Bayes, Gamma &amp; Ratio Q85</div>
+        </a>
+        <a href="#module-4" data-target="module-4" class="nav-pill block p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-cyan-500/50 transition">
+          <div class="flex items-center justify-between text-[10px] font-mono text-cyan-400">
+            <span>MODULE 04</span><span>ONLINE &amp; O(1)</span>
+          </div>
+          <div class="text-xs font-bold text-slate-100 mt-0.5">Tensors, Ratio Decay &amp; Prefix Variance</div>
+        </a>
+        <a href="#module-5" data-target="module-5" class="nav-pill block p-2.5 rounded-lg border border-slate-800 bg-slate-900/60 hover:border-emerald-500/50 transition">
+          <div class="flex items-center justify-between text-[10px] font-mono text-emerald-400">
+            <span>MODULE 05</span><span>GRAPH &amp; STOCHASTIC</span>
+          </div>
+          <div class="text-xs font-bold text-slate-100 mt-0.5">RAPTOR, Common Lines &amp; Live Poisson</div>
+        </a>
+      </div>
+
+      <!-- Architecture At-A-Glance Mini Card -->
+      <div class="rounded-xl border border-slate-800 bg-slate-900/80 p-3 space-y-2">
+        <div class="text-[10px] font-mono uppercase tracking-wider text-amber-400">End-to-End Latency Budget</div>
+        <div class="space-y-1.5 text-[11px] font-mono">
+          <div class="flex justify-between"><span class="text-slate-400">GTFS-RT Protobuf Poll</span><span class="text-cyan-300">~15 ms</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Numba 1D Map-Match</span><span class="text-emerald-300">~4 ms</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Tensor Slice + Decay</span><span class="text-amber-300">&lt; 3 ms</span></div>
+          <div class="flex justify-between"><span class="text-slate-400">Prefix Scan + RAPTOR</span><span class="text-cyan-300">~12 ms</span></div>
+          <div class="border-t border-slate-800 pt-1 flex justify-between font-bold">
+            <span class="text-slate-200">Total Query (6,812 stops)</span>
+            <span class="text-emerald-400">&lt; 45 ms</span>
+          </div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main Workbook Column -->
+    <main class="flex-1 p-4 sm:p-6 lg:p-8 space-y-12 overflow-x-hidden">
+
+      <!-- Hero Banner -->
+      <section class="workbook-grid rounded-2xl border border-slate-800 bg-slate-950/70 p-6 sm:p-8 relative overflow-hidden">
+        <div class="absolute -right-24 -top-24 w-72 h-72 rounded-full bg-cyan-500/10 blur-3xl pointer-events-none"></div>
+        <div class="absolute -left-24 -bottom-24 w-72 h-72 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none"></div>
+        <div class="relative z-10 max-w-4xl space-y-4">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-950/70 border border-cyan-700/50 text-[11px] font-mono text-cyan-300">
+            <span>ENGINEERING NOTEBOOK &bull; PRODUCTION BLUEPRINT</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">
+            How to Engineer Sub-50ms Real-Time ML Routing Systems from First Principles
+          </h2>
+          <p class="text-sm text-slate-300 leading-relaxed">
+            Most tutorials stop at <code class="text-amber-300">model.fit()</code> and <code class="text-amber-300">model.predict()</code>.
+            Real-world streaming AI systems fail on noisy GPS telemetry, cold-start sparsity, right-skewed uncertainty, and Python pointer overhead.
+            Below are the <strong class="text-emerald-300">5 core mathematical &amp; systems primitives</strong> powering <code class="text-cyan-300">delhi-transit-planner</code>—interactive, runnable in your browser, and distillable into 15-line Python patterns for any future system.
+          </p>
+        </div>
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- MODULE 1 -->
+      <!-- =================================================================== -->
+      <article id="module-1" class="scroll-mt-20 space-y-6">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <div class="text-xs font-mono uppercase tracking-widest text-cyan-400">Module 01 &bull; Systems Architecture &amp; Memory Layout</div>
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+              Binary Serialization, CSR Arrays &amp; Numba <code class="text-cyan-300">@njit</code>
+            </h3>
+          </div>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-mono">
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-300">Protobuf</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-300">Polars + Zstd</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-300">CSR Float32</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-300">Numba @njit</span>
+          </div>
+        </div>
+
+        <!-- Panel 1 & Panel 2 Side by Side -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- PANEL 1: Big Picture & Notebook Flowchart -->
+          <section class="xl:col-span-5 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">1. The Big Picture &amp; Notebook Flowchart</h4>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60">Decoupled 4-Layer</span>
+            </div>
+
+            <!-- SVG Flowchart -->
+            <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3">
+              <svg viewBox="0 0 460 190" class="w-full h-auto">
+                <defs>
+                  <marker id="arrowCyan" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#22d3ee" />
+                  </marker>
+                </defs>
+                <!-- Layer 1 -->
+                <rect x="8" y="14" width="96" height="62" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="56" y="34" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">1. INGESTION</text>
+                <text x="56" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Protobuf .pb</text>
+                <text x="56" y="62" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Atomic Parquet</text>
+
+                <line x1="104" y1="45" x2="122" y2="45" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
+
+                <!-- Layer 2 -->
+                <rect x="124" y="14" width="96" height="62" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+                <text x="172" y="34" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono" font-weight="700">2. STATE</text>
+                <text x="172" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">1D Match + PAVA</text>
+                <text x="172" y="62" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Polars Vector</text>
+
+                <line x1="220" y1="45" x2="238" y2="45" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
+
+                <!-- Layer 3 -->
+                <rect x="240" y="14" width="96" height="62" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+                <text x="288" y="34" text-anchor="middle" fill="#fcd34d" font-size="9" font-family="JetBrains Mono" font-weight="700">3. TENSOR</text>
+                <text x="288" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Offline LightGBM</text>
+                <text x="288" y="62" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">+ Live Blend</text>
+
+                <line x1="336" y1="45" x2="354" y2="45" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowCyan)"/>
+
+                <!-- Layer 4 -->
+                <rect x="356" y="14" width="96" height="62" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="404" y="34" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">4. DECISION</text>
+                <text x="404" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">CSR + @njit</text>
+                <text x="404" y="62" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">RAPTOR &lt;15ms</text>
+
+                <!-- Memory Contrast Box -->
+                <rect x="8" y="96" width="212" height="82" rx="8" fill="#1e1b2e" stroke="#ef4444" stroke-opacity="0.6" stroke-width="1"/>
+                <text x="18" y="114" fill="#fca5a5" font-size="9" font-family="JetBrains Mono" font-weight="700">PYTHON LIST-OF-LISTS (SLOW)</text>
+                <text x="18" y="130" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">routes[r] -&gt; PyObject* heap ptr</text>
+                <text x="18" y="144" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">28B box per int + L3 cache miss</text>
+                <text x="18" y="162" fill="#f87171" font-size="8.5" font-family="Plus Jakarta Sans">GIL + pointer chasing kills inner loops</text>
+
+                <rect x="240" y="96" width="212" height="82" rx="8" fill="#052e2b" stroke="#10b981" stroke-opacity="0.7" stroke-width="1"/>
+                <text x="250" y="114" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono" font-weight="700">CSR FLAT ARRAY + @njit (FAST)</text>
+                <text x="250" y="130" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">slice = data[off[r] : off[r+1]]</text>
+                <text x="250" y="144" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">16 float32s per 64B cache line</text>
+                <text x="250" y="162" fill="#34d399" font-size="8.5" font-family="Plus Jakarta Sans">Zero boxing, SIMD, C++ machine code</text>
+              </svg>
+            </div>
+
+            <div class="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+              <p>
+                <strong class="text-white">Intuition:</strong> Never mix slow network/ML inference with hot path queries. Split every streaming engine into four decoupled layers:
+                <span class="text-cyan-300">(1) Binary Ingestion</span>, <span class="text-emerald-300">(2) Vectorized State Extraction</span>, <span class="text-amber-300">(3) Precomputed Tensor + Decay</span>, and <span class="text-cyan-300">(4) Contiguous Memory Decision Kernel</span>.
+              </p>
+              <p>
+                <strong class="text-white">Why CSR + <code class="text-emerald-300">@njit</code>?</strong> A Python <code class="text-rose-300">list[list[int]]</code> scatters tiny 28-byte <code class="text-rose-300">PyObject</code> structs across RAM, causing CPU cache misses on every edge hop. Packing variable-length routes into two flat contiguous arrays (<code class="text-emerald-300">offsets</code> + <code class="text-emerald-300">flat_data</code>) lets Numba compile tight loops into LLVM machine code with hardware prefetching.
+              </p>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400">
+                <strong class="text-amber-300">Where else to reuse:</strong> Orderbook L2 snapshots, ragged RAG token batches, AdTech user-click graphs, molecular adjacency lists, or fleet telemetry pipelines.
+              </div>
+            </div>
+          </section>
+
+          <!-- PANEL 2: Interactive Visual Sandbox (1A & 1B) -->
+          <section class="xl:col-span-7 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-5">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-emerald-400">2. Interactive Visual Sandboxes (1A &amp; 1B)</h4>
+              <span class="text-[10px] font-mono text-slate-400">Live Browser Simulation</span>
+            </div>
+
+            <!-- Sandbox 1A: Protobuf vs JSON Payload Sizer -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-cyan-300">Sandbox 1A: Protobuf vs JSON Payload Sizer</div>
+                  <div class="text-[11px] text-slate-400">GTFS-RT <code class="text-slate-200">VehiclePositions.pb</code> binary wire encoding vs UTF-8 JSON text</div>
+                </div>
+                <div class="text-xs font-mono bg-slate-950 px-2.5 py-1 rounded border border-slate-700 text-cyan-300">
+                  Fleet: <span id="m1FleetLabel" class="font-bold">2,700</span> vehicles
+                </div>
+              </div>
+
+              <div class="flex items-center gap-3">
+                <span class="text-[11px] font-mono text-slate-400">100</span>
+                <input id="m1FleetSlider" type="range" min="100" max="10000" step="100" value="2700" class="flex-1" />
+                <span class="text-[11px] font-mono text-slate-400">10,000</span>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <div class="rounded-lg bg-slate-950/80 border border-rose-900/50 p-3 space-y-1.5">
+                  <div class="flex justify-between font-mono">
+                    <span class="text-rose-300 font-semibold">JSON Text (~245 B/veh)</span>
+                    <span id="m1JsonSize" class="text-rose-200 font-bold">661.5 KB</span>
+                  </div>
+                  <div class="w-full h-3 bg-slate-800 rounded overflow-hidden">
+                    <div id="m1JsonBar" class="h-full bg-gradient-to-r from-rose-600 to-rose-400 transition-all duration-150" style="width: 100%"></div>
+                  </div>
+                  <div class="flex justify-between text-[11px] font-mono text-slate-400">
+                    <span>4G Transfer (5 Mbps): <strong id="m1JsonTime" class="text-rose-300">1058 ms</strong></span>
+                    <span>10s Poll/Day: <strong id="m1JsonDay" class="text-rose-300">5.7 GB</strong></span>
+                  </div>
+                </div>
+
+                <div class="rounded-lg bg-slate-950/80 border border-emerald-900/50 p-3 space-y-1.5">
+                  <div class="flex justify-between font-mono">
+                    <span class="text-emerald-300 font-semibold">Protobuf Binary (~38 B/veh)</span>
+                    <span id="m1PbSize" class="text-emerald-200 font-bold">102.6 KB</span>
+                  </div>
+                  <div class="w-full h-3 bg-slate-800 rounded overflow-hidden">
+                    <div id="m1PbBar" class="h-full bg-gradient-to-r from-emerald-500 to-cyan-400 transition-all duration-150" style="width: 15.5%"></div>
+                  </div>
+                  <div class="flex justify-between text-[11px] font-mono text-slate-400">
+                    <span>4G Transfer (5 Mbps): <strong id="m1PbTime" class="text-emerald-300">164 ms</strong></span>
+                    <span>10s Poll/Day: <strong id="m1PbDay" class="text-emerald-300">0.89 GB</strong></span>
+                  </div>
+                </div>
+              </div>
+              <div class="text-[11px] font-mono text-amber-300/90 flex flex-wrap justify-between gap-2 bg-slate-950/60 px-3 py-1.5 rounded border border-slate-800">
+                <span>Wire Savings: <strong id="m1SavingsRatio">6.45x smaller</strong> (varint tags + raw IEEE-754 float32 lat/lon)</span>
+                <span>Parse Speedup: <strong>~12x</strong> zero-key-string decoding</span>
+              </div>
+            </div>
+
+            <!-- Sandbox 1B: CSR Flat Array Memory Visualizer -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-emerald-300">Sandbox 1B: Python List-of-Lists vs CSR Flat Array Memory Visualizer</div>
+                  <div class="text-[11px] text-slate-400">Click any route <code class="text-cyan-300">r</code> to highlight its contiguous slice <code class="text-emerald-300">[offsets[r] : offsets[r+1]]</code> in a 1D <code class="text-amber-300">Float32Array</code></div>
+                </div>
+                <div class="flex gap-1.5" id="m1RouteBtns"></div>
+              </div>
+
+              <canvas id="m1CsrCanvas" class="w-full h-56 rounded-lg bg-slate-950 border border-slate-800 cursor-pointer"></canvas>
+
+              <div id="m1CsrReadout" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Selected Slice</div>
+                  <div id="m1SliceRange" class="text-cyan-300 font-bold">offsets[0..1] = [0 : 4]</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">CPU Cache Lines (64B)</div>
+                  <div id="m1CacheLines" class="text-emerald-300 font-bold">1 hit (16 f32/line)</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Py List Pointer Hops</div>
+                  <div id="m1PtrHops" class="text-rose-300 font-bold">5 scattered derefs</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Memory Footprint</div>
+                  <div id="m1MemFootprint" class="text-amber-300 font-bold">16 B vs 176 B (11x)</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Panel 3 & Panel 4 Side by Side -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- PANEL 3: Reusable 15-Line Python Pattern -->
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">3. Reusable 15-Line Python Pattern (CSR + Numba @njit)</h4>
+              <button onclick="copyCode('code-m1', this)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-cyan-300 transition">Copy Pattern</button>
+            </div>
+            <pre id="code-m1" class="rounded-lg bg-slate-900 border border-slate-800 p-3.5 text-[11.5px] leading-relaxed text-slate-200 overflow-x-auto"><code>import numpy as np
+from numba import njit
+
+def pack_csr(lists: list[list[int]], weights: list[list[float]]):
+    offsets = np.zeros(len(lists) + 1, dtype=np.int32)
+    offsets[1:] = np.cumsum([len(x) for x in lists])
+    flat_edges = np.concatenate(lists).astype(np.int32)
+    flat_w = np.concatenate(weights).astype(np.float32)
+    return offsets, flat_edges, flat_w
+
+@njit(fastmath=True)
+def scan_csr(offsets, edges, weights, best):
+    for r in range(len(offsets) - 1):
+        acc = np.float32(0.0)
+        for k in range(offsets[r], offsets[r + 1]):  # contiguous L1 scan
+            acc += weights[k]
+            if acc &lt; best[edges[k]]: best[edges[k]] = acc</code></pre>
+          </section>
+
+          <!-- PANEL 4: Where It Lives in Our Repo -->
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">4. Where It Lives in Our Repo</h4>
+            <div class="space-y-2.5 text-xs">
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/ingestion/live_collector.py</span>
+                  <span class="text-amber-300">parse_vehicle_positions() &bull; L132–179</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L134–135:</span> Decodes binary GTFS-RT <code class="text-cyan-300">FeedMessage.ParseFromString(payload)</code> without JSON overhead; <span class="text-slate-400 font-mono">L174–179:</span> writes Zstd-compressed Polars Parquet atomically via <code class="text-cyan-300">.tmp</code> + <code class="text-cyan-300">os.replace</code>.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/transit_graph.py</span>
+                  <span class="text-amber-300">build_route_csr() &bull; L315–371</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L336–370:</span> Flattens all 2,554 bus routes into <code class="text-cyan-300">route_stop_offsets (int32)</code>, <code class="text-cyan-300">route_stops (int32)</code>, <code class="text-cyan-300">route_stop_dists_m (float64)</code>, and <code class="text-cyan-300">route_corridor_idxs (int32)</code>.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/wait_estimator.py</span>
+                  <span class="text-amber-300">_compute_prefix_arrays_jit() &bull; L55–97</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L55, L71–95:</span> <code class="text-cyan-300">@njit(fastmath=True)</code> sweeps the CSR offsets in a single contiguous <code class="text-cyan-300">float32</code> pass in &lt;2ms.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      <!-- =================================================================== -->
+      <!-- MODULE 2 -->
+      <!-- =================================================================== -->
+      <article id="module-2" class="scroll-mt-20 space-y-6 pt-4 border-t border-slate-800/80">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <div class="text-xs font-mono uppercase tracking-widest text-emerald-400">Module 02 &bull; Spatial Geometry &amp; Signal Cleaning</div>
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+              1D Linear Referencing &amp; Isotonic Regression (<code class="text-emerald-300">PAVA</code>)
+            </h3>
+          </div>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-mono">
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-300">Dot-Product Projection</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-300">75m Off-Route Gate</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-300">Monotonic PAVA</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- PANEL 1 -->
+          <section class="xl:col-span-5 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-emerald-400">1. The Big Picture &amp; Notebook Flowchart</h4>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60">2D &rarr; 1D Signal</span>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3">
+              <svg viewBox="0 0 460 170" class="w-full h-auto">
+                <defs>
+                  <marker id="arrowEm" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#10b981" />
+                  </marker>
+                </defs>
+                <rect x="8" y="16" width="128" height="62" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="72" y="34" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">RAW GPS (lat, lon)</text>
+                <text x="72" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Local Tangent (x, y)</text>
+                <text x="72" y="64" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Windowed Dot-Product</text>
+
+                <line x1="136" y1="47" x2="162" y2="47" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrowEm)"/>
+
+                <rect x="164" y="16" width="132" height="62" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+                <text x="230" y="34" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono" font-weight="700">1D ARC-LENGTH d(t)</text>
+                <text x="230" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Strip 100m Layovers</text>
+                <text x="230" y="64" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">3-Strike &gt;75m Gate</text>
+
+                <line x1="296" y1="47" x2="322" y2="47" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrowEm)"/>
+
+                <rect x="324" y="16" width="128" height="62" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+                <text x="388" y="34" text-anchor="middle" fill="#fcd34d" font-size="9" font-family="JetBrains Mono" font-weight="700">PAVA MONOTONIC</text>
+                <text x="388" y="49" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Pool Backward Jumps</text>
+                <text x="388" y="64" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Interp Stop Dep t_u, t_v</text>
+
+                <rect x="8" y="96" width="444" height="64" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+                <text x="20" y="116" fill="#34d399" font-size="9.5" font-family="JetBrains Mono" font-weight="700">CORE PROJECTION EQUATION:</text>
+                <text x="20" y="134" fill="#e2e8f0" font-size="9.5" font-family="JetBrains Mono">t_proj = clamp( dot(AP, AB) / dot(AB, AB), 0.0, 1.0 )</text>
+                <text x="20" y="149" fill="#94a3b8" font-size="9" font-family="JetBrains Mono">d_m = s_A + t_proj * |AB|   |   perp_dist = ||P - (A + t_proj * AB)||</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/70 border border-slate-800 px-3 py-2 text-xs">
+              $$t_{\text{proj}} = \operatorname{clip}\!\left(\frac{\overrightarrow{AP} \cdot \overrightarrow{AB}}{\|\overrightarrow{AB}\|^2},\; 0,\; 1\right), \qquad \hat{d}_{\text{mono}} = \arg\min_{z_1 \le \dots \le z_m} \sum_{i=1}^m (z_i - d_i)^2$$
+            </div>
+
+            <div class="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+              <p>
+                <strong class="text-white">Intuition:</strong> Roads curve in 2D <code class="text-cyan-300">(lat, lon)</code>, making Euclidean distance between stops useless. By projecting GPS onto a polyline into 1D cumulative meters $d_m$, every stop and vehicle becomes a single scalar!
+              </p>
+              <p>
+                <strong class="text-white">Why PAVA?</strong> Urban GPS multipath makes buses appear to jump backward by 40m at intersections, creating negative travel times! Pool-Adjacent-Violators (<code class="text-amber-300">IsotonicRegression</code>) merges violating pairs into their weighted average in $O(m)$ time, guaranteeing monotonic progress before interpolating departure times at canonical stop positions.
+              </p>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400">
+                <strong class="text-amber-300">Where else to reuse:</strong> Drone/robot path-following error, calibration curves (Platt/isotonic probability calibration), wearable altimeter cleaning, conveyor-belt sensor alignment.
+              </div>
+            </div>
+          </section>
+
+          <!-- PANEL 2: Interactive Visual Sandboxes (2A & 2B) -->
+          <section class="xl:col-span-7 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-5">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-emerald-400">2. Interactive Visual Sandboxes (2A &amp; 2B)</h4>
+              <span class="text-[10px] font-mono text-slate-400">Drag Points Directly on Canvas</span>
+            </div>
+
+            <!-- Sandbox 2A: 2D-to-1D Vector Projection Canvas -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-cyan-300">Sandbox 2A: 2D-to-1D Vector Projection &amp; 75m Off-Route Gate</div>
+                  <div class="text-[11px] text-slate-400">Drag the glowing <span class="text-amber-300 font-semibold">GPS Ping (P)</span> anywhere around the 4-segment polyline</div>
+                </div>
+                <div id="m2OffRouteBadge" class="text-[11px] font-mono px-2.5 py-1 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-bold">
+                  ON-ROUTE (&le; 75m)
+                </div>
+              </div>
+
+              <canvas id="m2ProjCanvas" class="w-full h-56 rounded-lg bg-slate-950 border border-slate-800 cursor-grab active:cursor-grabbing"></canvas>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Active Segment</div>
+                  <div id="m2SegIdx" class="text-cyan-300 font-bold">Seg 1 (B &rarr; C)</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Clamped t_proj</div>
+                  <div id="m2TProj" class="text-amber-300 font-bold">0.54</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">perp_dist_m</div>
+                  <div id="m2PerpDist" class="text-emerald-300 font-bold">34.2 m</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">1D Arc-Length d_m</div>
+                  <div id="m2ArcDist" class="text-cyan-300 font-bold">412.6 m</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sandbox 2B: Interactive PAVA Isotonic Regression Playground -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-emerald-300">Sandbox 2B: Interactive PAVA Isotonic Regression Playground</div>
+                  <div class="text-[11px] text-slate-400">Drag any of the 10 GPS ping dots vertically (<code class="text-slate-200">d_m</code>) to create backward jumps &amp; watch PAVA pool blocks live</div>
+                </div>
+                <button onclick="resetM2Pava()" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-slate-200 transition">Reset Glitch Trace</button>
+              </div>
+
+              <div class="flex flex-wrap gap-3 text-xs">
+                <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 hover:border-amber-500/50">
+                  <input type="checkbox" id="m2ChkLayover" checked class="rounded accent-amber-400" />
+                  <span class="text-slate-200">1) Strip 100m Terminal Layover</span>
+                </label>
+                <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 hover:border-emerald-500/50">
+                  <input type="checkbox" id="m2ChkPava" checked class="rounded accent-emerald-400" />
+                  <span class="text-slate-200">2) Run Pool-Adjacent-Violators (PAVA)</span>
+                </label>
+                <label class="inline-flex items-center gap-2 cursor-pointer bg-slate-950 px-3 py-1.5 rounded-lg border border-slate-800 hover:border-cyan-500/50">
+                  <input type="checkbox" id="m2ChkInterp" checked class="rounded accent-cyan-400" />
+                  <span class="text-slate-200">3) Interpolate Stop Departure Timestamps</span>
+                </label>
+              </div>
+
+              <canvas id="m2PavaCanvas" class="w-full h-64 rounded-lg bg-slate-950 border border-slate-800 cursor-ns-resize"></canvas>
+
+              <div id="m2PavaStats" class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Raw Backward Violations</div>
+                  <div id="m2ViolCount" class="text-rose-300 font-bold">2 jumps</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Layover Stripped</div>
+                  <div id="m2StrippedCount" class="text-amber-300 font-bold">2 pings</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">PAVA Pooled Blocks</div>
+                  <div id="m2PoolBlocks" class="text-emerald-300 font-bold">5 blocks</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Stop S1 &rarr; S2 Pace</div>
+                  <div id="m2InterpPace" class="text-cyan-300 font-bold">0.18 s/m (20 km/h)</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Panel 3 & Panel 4 -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">3. Reusable 15-Line Python Pattern (1D Projection + PAVA)</h4>
+              <button onclick="copyCode('code-m2', this)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-cyan-300 transition">Copy Pattern</button>
+            </div>
+            <pre id="code-m2" class="rounded-lg bg-slate-900 border border-slate-800 p-3.5 text-[11.5px] leading-relaxed text-slate-200 overflow-x-auto"><code>import numpy as np
+from sklearn.isotonic import IsotonicRegression
+
+def project_to_polyline(px, py, poly_x, poly_y, poly_s):
+    ax, ay, bx, by = poly_x[:-1], poly_y[:-1], poly_x[1:], poly_y[1:]
+    abx, aby = bx - ax, by - ay
+    L2 = np.maximum(1e-9, abx**2 + aby**2)
+    t = np.clip(((px - ax) * abx + (py - ay) * aby) / L2, 0.0, 1.0)
+    dist = np.hypot(px - (ax + t * abx), py - (ay + t * aby))
+    i = int(np.argmin(dist))
+    return float(poly_s[i] + t[i] * np.sqrt(L2[i])), float(dist[i])
+
+def clean_and_interpolate_stops(t_pings, d_pings, d_stops):
+    d_mono = IsotonicRegression(increasing=True).fit_transform(t_pings, d_pings)
+    u_d, idx = np.unique(d_mono, return_index=True)  # collapse dwell flat spots
+    return np.interp(d_stops, u_d, t_pings[idx])     # exact stop timestamps</code></pre>
+          </section>
+
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">4. Where It Lives in Our Repo</h4>
+            <div class="space-y-2.5 text-xs">
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/matching/map_matcher.py</span>
+                  <span class="text-amber-300">project_point_to_polyline_window() &bull; L47–140</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L100–132:</span> Computes scalar projection <code class="text-cyan-300">t_proj = proj / L</code> clamped to <code class="text-cyan-300">[0.0, 1.0]</code> inside arc-length window <code class="text-cyan-300">[d_min, d_max]</code>, plus bearing alignment penalty.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/matching/map_matcher.py</span>
+                  <span class="text-amber-300">match_vehicle_trace() &bull; L144–220</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L204–215:</span> Enforces the <code class="text-cyan-300">75.0m</code> perpendicular threshold for 3 consecutive pings before flagging <code class="text-rose-300">is_off_route = True</code> and triggering global re-acquisition.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/matching/map_matcher.py</span>
+                  <span class="text-amber-300">extract_stop_to_stop_segments() &bull; L357–520</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L442–466:</span> Strips 100m terminal layover pings; <span class="text-slate-400 font-mono">L480–481:</span> runs <code class="text-cyan-300">IsotonicRegression(increasing=True)</code>; <span class="text-slate-400 font-mono">L501–505:</span> collapses flat spots to max departure timestamp before interpolating stop-to-stop pace.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      <!-- =================================================================== -->
+      <!-- MODULE 3 -->
+      <!-- =================================================================== -->
+      <article id="module-3" class="scroll-mt-20 space-y-6 pt-4 border-t border-slate-800/80">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <div class="text-xs font-mono uppercase tracking-widest text-amber-400">Module 03 &bull; Applied ML Beyond Toy Tutorials</div>
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+              Empirical Bayes Shrinkage, Gamma-LightGBM &amp; Ratio Quantile Loss
+            </h3>
+          </div>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-mono">
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-300">LOO Shrinkage</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-300">Gamma Deviance</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-300">Pinball &alpha;=0.85</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- PANEL 1 -->
+          <section class="xl:col-span-5 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">1. The Big Picture &amp; Notebook Flowchart</h4>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800/60">Zero Leakage ML</span>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3">
+              <svg viewBox="0 0 460 175" class="w-full h-auto">
+                <defs>
+                  <marker id="arrowAmb" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#f59e0b" />
+                  </marker>
+                </defs>
+                <rect x="8" y="14" width="136" height="64" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+                <text x="76" y="32" text-anchor="middle" fill="#fcd34d" font-size="9" font-family="JetBrains Mono" font-weight="700">60/20/20 VEH SPLIT</text>
+                <text x="76" y="48" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">LOO EB Target Enc.</text>
+                <text x="76" y="63" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">n_loo = n - 1 (no leak)</text>
+
+                <line x1="144" y1="46" x2="164" y2="46" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrowAmb)"/>
+
+                <rect x="166" y="14" width="136" height="64" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+                <text x="234" y="32" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono" font-weight="700">HEAD 1: GAMMA GBDT</text>
+                <text x="234" y="48" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Calib factor on 20%</text>
+                <text x="234" y="63" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">mu_hat = cal * raw_mu</text>
+
+                <line x1="302" y1="46" x2="322" y2="46" stroke="#f59e0b" stroke-width="1.5" marker-end="url(#arrowAmb)"/>
+
+                <rect x="324" y="14" width="128" height="64" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="388" y="32" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">HEAD 2: RATIO Q85</text>
+                <text x="388" y="48" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Train on r = y / mu_oof</text>
+                <text x="388" y="63" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">q85 = mu * max(1.03, r)</text>
+
+                <rect x="8" y="96" width="444" height="68" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+                <text x="20" y="115" fill="#fcd34d" font-size="9" font-family="JetBrains Mono" font-weight="700">WHY RATIO QUANTILE + GAMMA BEATS MSE:</text>
+                <text x="20" y="132" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">1. MSE assumes symmetric errors &amp; gets hijacked by 10x traffic-jam outliers.</text>
+                <text x="20" y="146" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">2. Gamma penalizes relative error (y/mu); Ratio Q85 guarantees q85 &ge; 1.03 * mu (zero crossing).</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/70 border border-slate-800 px-3 py-2 text-xs">
+              $$w_{-i} = \frac{n - 1}{(n - 1) + k}, \qquad \hat{\theta}_{\text{EB},-i} = w_{-i}\bar{y}_{-i} + (1 - w_{-i}) m_{\text{global}}, \qquad q_{85} = \hat{\mu} \cdot \max\!\left(1.03,\; r_{\text{shrunk},85}\right)$$
+            </div>
+
+            <div class="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+              <p>
+                <strong class="text-white">Intuition:</strong> Across 15,130 corridors &times; 96 time bins, most cells have $n = 0, 1, 2$ observations! Raw averages overfit wildly; <strong class="text-amber-300">Leave-One-Out Empirical Bayes</strong> smoothly pulls low-sample corridors toward a diurnal spatial prior $m_{\text{global}}$, and excludes row $i$ itself ($n_{\text{loo}} = n - 1$) so trees never memorize target noise.
+              </p>
+              <p>
+                <strong class="text-white">Why Ratio Quantile?</strong> Training a separate quantile tree on $y$ directly often produces <code class="text-rose-300">q85 &lt; mu</code> (quantile crossing)! Instead, we train Head 2 on the dimensionless ratio $r_i = y_i / \mu_{\text{oof}, i}$ with pinball loss $\alpha = 0.85$, shrink $r_{85}$ toward $r_{\text{global}, 85}$, and clamp $\ge 1.03$.
+              </p>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400">
+                <strong class="text-amber-300">Where else to reuse:</strong> Delivery ETAs, API p95 latency forecasting, insurance claim severity, hospital LOS, SaaS customer spend modeling.
+              </div>
+            </div>
+          </section>
+
+          <!-- PANEL 2: Interactive Visual Sandboxes (3A & 3B) -->
+          <section class="xl:col-span-7 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-5">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">2. Interactive Visual Sandboxes (3A &amp; 3B)</h4>
+              <span class="text-[10px] font-mono text-slate-400">Live Shrinkage &amp; Loss Explorer</span>
+            </div>
+
+            <!-- Sandbox 3A: Empirical Bayes Cold-Start Calculator -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-amber-300">Sandbox 3A: Empirical Bayes &amp; Leave-One-Out Cold-Start Calculator</div>
+                  <div class="text-[11px] text-slate-400">Observe how shrinkage weight <code class="text-cyan-300">w = n / (n + k)</code> behaves and how <code class="text-emerald-300">n_loo = max(0, n - 1)</code> prevents target leakage</div>
+                </div>
+                <div id="m3LeakBadge" class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300">
+                  LOO Safe
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Sample Count <code class="text-cyan-300">n</code></span><strong id="m3NVal" class="text-cyan-300">1</strong></div>
+                  <input id="m3NSlider" type="range" min="0" max="50" step="1" value="1" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Smoothing Strength <code class="text-amber-300">k</code></span><strong id="m3KVal" class="text-amber-300">5</strong></div>
+                  <input id="m3KSlider" type="range" min="1" max="20" step="1" value="5" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Noisy Local Mean <code class="text-rose-300">y&#772;</code> (s/m)</span><strong id="m3YVal" class="text-rose-300">0.48</strong></div>
+                  <input id="m3YSlider" type="range" min="0.06" max="0.60" step="0.01" value="0.48" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Global Prior <code class="text-emerald-300">m_global</code> (s/m)</span><strong id="m3MVal" class="text-emerald-300">0.18</strong></div>
+                  <input id="m3MSlider" type="range" min="0.06" max="0.40" step="0.01" value="0.18" class="w-full" />
+                </label>
+              </div>
+
+              <canvas id="m3EbCanvas" class="w-full h-48 rounded-lg bg-slate-950 border border-slate-800"></canvas>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Inference w = n/(n+k)</div>
+                  <div id="m3WInf" class="text-cyan-300 font-bold">0.167</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Posterior &theta;_EB</div>
+                  <div id="m3ThetaInf" class="text-amber-300 font-bold">0.230 s/m</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Train w_loo (n-1)</div>
+                  <div id="m3WLoo" class="text-emerald-300 font-bold">0.000 (0 leak!)</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Train Feature &theta;_loo</div>
+                  <div id="m3ThetaLoo" class="text-emerald-300 font-bold">0.180 s/m</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sandbox 3B: Loss Function & Distribution Explorer -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-cyan-300">Sandbox 3B: Loss Function &amp; Right-Skewed Ratio Quantile Explorer</div>
+                  <div class="text-[11px] text-slate-400">Compare <code class="text-rose-300">MSE</code> vs <code class="text-emerald-300">Gamma Deviance</code> vs <code class="text-amber-300">Pinball (&alpha;=0.85)</code> as traffic volatility <code class="text-cyan-300">CV</code> changes</div>
+                </div>
+                <div class="text-xs font-mono bg-slate-950 px-2.5 py-1 rounded border border-slate-700 text-cyan-300">
+                  CV (&sigma;/&mu;): <strong id="m3CvLabel">0.28</strong>
+                </div>
+              </div>
+
+              <div class="flex items-center gap-3">
+                <span class="text-[11px] font-mono text-slate-400">Calm 0.08</span>
+                <input id="m3CvSlider" type="range" min="0.08" max="0.60" step="0.02" value="0.28" class="flex-1" />
+                <span class="text-[11px] font-mono text-slate-400">Volatile 0.60</span>
+              </div>
+
+              <canvas id="m3LossCanvas" class="w-full h-56 rounded-lg bg-slate-950 border border-slate-800"></canvas>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Expected &mu; (Gamma)</div>
+                  <div id="m3MuOut" class="text-emerald-300 font-bold">120.0 s</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Shrunk Ratio r_85</div>
+                  <div id="m3R85Out" class="text-amber-300 font-bold">1.29x</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Safe P85 (q85)</div>
+                  <div id="m3Q85Out" class="text-cyan-300 font-bold">154.8 s</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Derived &sigma;_e</div>
+                  <div id="m3SigmaOut" class="text-slate-200 font-bold">33.6 s</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Panel 3 & Panel 4 -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">3. Reusable 15-Line Python Pattern (OOF EB + Dual-Head GBDT)</h4>
+              <button onclick="copyCode('code-m3', this)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-cyan-300 transition">Copy Pattern</button>
+            </div>
+            <pre id="code-m3" class="rounded-lg bg-slate-900 border border-slate-800 p-3.5 text-[11.5px] leading-relaxed text-slate-200 overflow-x-auto"><code>import numpy as np, lightgbm as lgb
+
+def oof_eb_encode(keys, y, m_prior, k=5.0):
+    cnt, tot = {}, {}
+    for g, v in zip(keys, y): cnt[g], tot[g] = cnt.get(g, 0) + 1, tot.get(g, 0.0) + v
+    out = np.empty(len(y))
+    for i, (g, v, mp) in enumerate(zip(keys, y, m_prior)):
+        n_loo = cnt[g] - 1
+        w = n_loo / (n_loo + k) if n_loo &gt; 0 else 0.0
+        out[i] = w * ((tot[g] - v) / max(1, n_loo)) + (1.0 - w) * mp
+    return out
+
+m_mu = lgb.LGBMRegressor(objective="gamma", n_estimators=400).fit(X_tr, y_tr)
+cal = y_cal.sum() / np.maximum(1.0, m_mu.predict(X_cal).sum())
+m_r85 = lgb.LGBMRegressor(objective="quantile", alpha=0.85).fit(X_tr, y_tr / mu_oof)
+q85 = (m_mu.predict(X_te) * cal) * np.maximum(1.03, m_r85.predict(X_te))</code></pre>
+          </section>
+
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">4. Where It Lives in Our Repo</h4>
+            <div class="space-y-2.5 text-xs">
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/model/historical_baseline.py</span>
+                  <span class="text-amber-300">compute_oof_eb_features() &bull; L289–394</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L375–389:</span> Computes <code class="text-cyan-300">n_loo = group_counts[key] - 1</code>; if <code class="text-cyan-300">n_loo &lt;= 0</code>, strictly outputs <code class="text-cyan-300">m_prior_arr[i]</code> (zero self-leakage).
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/model/lgbm_trainer.py</span>
+                  <span class="text-amber-300">train_travel_time_models() &bull; L541–744</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L589–607:</span> Fits 400-tree Gamma LightGBM with monotone constraints and computes scalar <code class="text-cyan-300">calibration_factor</code> on the 20% <code class="text-cyan-300">calib_real_df</code>; <span class="text-slate-400 font-mono">L618–628:</span> fits 300-tree Ratio Quantile (<code class="text-cyan-300">alpha=0.85</code>) on <code class="text-cyan-300">r_i = y_i / mu_oof</code>.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/model/lgbm_trainer.py</span>
+                  <span class="text-amber-300">get_shrunk_q85_and_sigma() &bull; L89–109</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L104–109:</span> Shrinks <code class="text-cyan-300">r_pred_85</code> toward <code class="text-cyan-300">r_global_85</code> with <code class="text-cyan-300">k=5.0</code>, floors at <code class="text-cyan-300">1.03</code>, and derives <code class="text-cyan-300">sigma_e = max(0.05*mu, (q85 - mu)/1.036)</code>.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      <!-- =================================================================== -->
+      <!-- MODULE 4 -->
+      <!-- =================================================================== -->
+      <article id="module-4" class="scroll-mt-20 space-y-6 pt-4 border-t border-slate-800/80">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <div class="text-xs font-mono uppercase tracking-widest text-cyan-400">Module 04 &bull; Real-Time Online Learning &amp; O(1) Prefix Sums</div>
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+              Offline Tensors + Ratio Decay &amp; Correlated Prefix Variance
+            </h3>
+          </div>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-mono">
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-300">Zero Live .predict()</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-300">Ratio Decay &gamma;_0 e^-dt/&tau;</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-300">O(1) Correlated V(i&rarr;j)</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- PANEL 1 -->
+          <section class="xl:col-span-5 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">1. The Big Picture &amp; Notebook Flowchart</h4>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-800/60">&lt; 3 ms Serving</span>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3">
+              <svg viewBox="0 0 460 175" class="w-full h-auto">
+                <defs>
+                  <marker id="arrowC4" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#22d3ee" />
+                  </marker>
+                </defs>
+                <rect x="8" y="12" width="136" height="62" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+                <text x="76" y="30" text-anchor="middle" fill="#fcd34d" font-size="9" font-family="JetBrains Mono" font-weight="700">OFFLINE TENSOR</text>
+                <text x="76" y="45" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">mu[15130, 96, 2]</text>
+                <text x="76" y="59" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="Plus Jakarta Sans">11 MB RAM, 0 tree calls</text>
+
+                <line x1="144" y1="43" x2="164" y2="43" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowC4)"/>
+
+                <rect x="166" y="12" width="136" height="62" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="234" y="30" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">ONLINE DECAY BLEND</text>
+                <text x="234" y="45" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">q_0 = y_0 / mu_0</text>
+                <text x="234" y="59" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="Plus Jakarta Sans">Decays back to diurnal</text>
+
+                <line x1="302" y1="43" x2="322" y2="43" stroke="#22d3ee" stroke-width="1.5" marker-end="url(#arrowC4)"/>
+
+                <rect x="324" y="12" width="128" height="62" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+                <text x="388" y="30" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono" font-weight="700">PREFIX O(1) SCAN</text>
+                <text x="388" y="45" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="JetBrains Mono">Tcum[], S1[], S2[]</text>
+                <text x="388" y="59" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="Plus Jakarta Sans">2 array reads per leg</text>
+
+                <rect x="8" y="92" width="444" height="72" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+                <text x="20" y="112" fill="#34d399" font-size="9" font-family="JetBrains Mono" font-weight="700">CORRELATED SUB-PATH VARIANCE IDENTITY:</text>
+                <text x="20" y="129" fill="#e2e8f0" font-size="9" font-family="JetBrains Mono">Var(sum sigma_e) = (1 - rho)*sum(sigma_e^2) + rho*(sum sigma_e)^2</text>
+                <text x="20" y="146" fill="#94a3b8" font-size="8.5" font-family="JetBrains Mono">S1[j]-S1[i] = sum(sigma_e)  |  S2[j]-S2[i] = sum(sigma_e^2)  =&gt; O(1)!</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/70 border border-slate-800 px-3 py-2 text-xs">
+              $$\hat{y}(t) = \mu(t)\Big(1 + \gamma_0 e^{-\Delta t / \tau}(q_0 - 1)\Big), \qquad V(i \to j) = (1 - \rho)(S_2[j] - S_2[i]) + \rho(S_1[j] - S_1[i])^2$$
+            </div>
+
+            <div class="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+              <p>
+                <strong class="text-white">Intuition 1 (Offline Tensors):</strong> A static road graph has finite corridors ($15{,}130$) and finite 15-min slots ($96 \times 2$). Precomputing all $2.9\text{M}$ cells into an 11 MB <code class="text-cyan-300">float32</code> tensor replaces 15,000 LightGBM tree traversals per query with a single NumPy slice + exponential ratio decay!
+              </p>
+              <p>
+                <strong class="text-white">Intuition 2 (Correlated Prefix Variance):</strong> Summing segment variances independently ($\rho=0$) drastically underestimates trip uncertainty because traffic jams span consecutive blocks! Storing two prefix sums—$S_1[k] = \sum \sigma_e$ and $S_2[k] = \sum \sigma_e^2$—lets us compute exact correlated variance for <em>any</em> sub-path $i \to j$ in just two array lookups!
+              </p>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400">
+                <strong class="text-amber-300">Where else to reuse:</strong> Streaming SLA tail risk over microservices spans, financial portfolio covariance over rolling windows, supply-chain multi-hop lead-time buffers.
+              </div>
+            </div>
+          </section>
+
+          <!-- PANEL 2: Interactive Visual Sandboxes (4A & 4B) -->
+          <section class="xl:col-span-7 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-5">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">2. Interactive Visual Sandboxes (4A &amp; 4B)</h4>
+              <span class="text-[10px] font-mono text-slate-400">Live Blending &amp; O(1) Algebra</span>
+            </div>
+
+            <!-- Sandbox 4A: Live Anomaly Decay Simulator -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-amber-300">Sandbox 4A: Live Anomaly Ratio-Decay Simulator (24h Diurnal Curve)</div>
+                  <div class="text-[11px] text-slate-400">Observed pace ratio <code class="text-cyan-300">q_0 = y_0 / mu_0</code> at 08:00 AM bends <code class="text-slate-200">mu_tensor[c, 96]</code> and decays over <code class="text-amber-300">delta_t</code></div>
+                </div>
+                <div class="flex gap-1.5 text-[11px] font-mono">
+                  <button onclick="setM4Kernel(0.39, 18)" class="px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-700 text-cyan-300">Self (&gamma;=0.39)</button>
+                  <button onclick="setM4Kernel(0.10, 22)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">Cross (&gamma;=0.10)</button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Pace Ratio <code class="text-rose-300">q_0</code></span><strong id="m4QVal" class="text-rose-300">1.80x</strong></div>
+                  <input id="m4QSlider" type="range" min="0.50" max="2.50" step="0.05" value="1.80" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Horizon <code class="text-cyan-300">&Delta;t</code></span><strong id="m4DtVal" class="text-cyan-300">15 m</strong></div>
+                  <input id="m4DtSlider" type="range" min="0" max="60" step="1" value="15" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Gain <code class="text-amber-300">&gamma;_0</code></span><strong id="m4GammaVal" class="text-amber-300">0.39</strong></div>
+                  <input id="m4GammaSlider" type="range" min="0.05" max="0.80" step="0.01" value="0.39" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Decay <code class="text-emerald-300">&tau;</code></span><strong id="m4TauVal" class="text-emerald-300">18 m</strong></div>
+                  <input id="m4TauSlider" type="range" min="5" max="45" step="1" value="18" class="w-full" />
+                </label>
+              </div>
+
+              <canvas id="m4DecayCanvas" class="w-full h-52 rounded-lg bg-slate-950 border border-slate-800"></canvas>
+
+              <div class="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Baseline &mu;(08:00 + &Delta;t)</div>
+                  <div id="m4BaseOut" class="text-slate-200 font-bold">94.2 s</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Decay Weight &alpha;(&Delta;t)</div>
+                  <div id="m4AlphaOut" class="text-amber-300 font-bold">0.170</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Blended y&#770;(t)</div>
+                  <div id="m4YhatOut" class="text-cyan-300 font-bold">107.0 s (+13.6%)</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sandbox 4B: O(1) Prefix Sum & Correlated Variance Explorer -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-emerald-300">Sandbox 4B: O(1) Prefix Sum &amp; Correlated Variance Explorer</div>
+                  <div class="text-[11px] text-slate-400">Click boarding stop <code class="text-emerald-300">i</code> and alighting stop <code class="text-rose-300">j</code> on this 8-segment route &amp; slide <code class="text-cyan-300">rho</code></div>
+                </div>
+                <div class="flex gap-1.5 text-[11px] font-mono">
+                  <button onclick="setM4Rho(0.0)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">&rho;=0.00</button>
+                  <button onclick="setM4Rho(0.60)" class="px-2 py-0.5 rounded bg-emerald-950 hover:bg-emerald-900 border border-emerald-700 text-emerald-300">Delhi 0.60</button>
+                  <button onclick="setM4Rho(1.0)" class="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">&rho;=1.00</button>
+                </div>
+              </div>
+
+              <!-- Interactive Stop Selector Strip -->
+              <div id="m4StopStrip" class="flex items-center justify-between gap-1 bg-slate-950 border border-slate-800 rounded-lg p-2.5 overflow-x-auto"></div>
+
+              <div class="flex items-center gap-3 text-xs">
+                <span class="font-mono text-slate-400 shrink-0">Intra-trip &rho;:</span>
+                <input id="m4RhoSlider" type="range" min="0" max="1" step="0.02" value="0.60" class="flex-1" />
+                <strong id="m4RhoVal" class="font-mono text-cyan-300 w-12 text-right">0.60</strong>
+              </div>
+
+              <!-- Prefix Arrays Live Highlight Table -->
+              <div class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950">
+                <table class="w-full text-[11px] font-mono text-center">
+                  <thead class="bg-slate-900 text-slate-400 border-b border-slate-800">
+                    <tr id="m4PrefixHead"></tr>
+                  </thead>
+                  <tbody id="m4PrefixBody" class="divide-y divide-slate-800/80"></tbody>
+                </table>
+              </div>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Mean &mu;(i&rarr;j)</div>
+                  <div id="m4MuLeg" class="text-cyan-300 font-bold">0.0 m</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Correlated Std &radic;V</div>
+                  <div id="m4StdLeg" class="text-amber-300 font-bold">0.0 m</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Lognormal Q85</div>
+                  <div id="m4Q85Leg" class="text-emerald-300 font-bold">0.0 m</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Array Lookups</div>
+                  <div class="text-cyan-300 font-bold">2 ops O(1)</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Panel 3 & Panel 4 -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">3. Reusable 15-Line Python Pattern (O(1) Prefix Range Stats)</h4>
+              <button onclick="copyCode('code-m4', this)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-cyan-300 transition">Copy Pattern</button>
+            </div>
+            <pre id="code-m4" class="rounded-lg bg-slate-900 border border-slate-800 p-3.5 text-[11.5px] leading-relaxed text-slate-200 overflow-x-auto"><code>import math, numpy as np
+
+class PrefixRouteStats:
+    def __init__(self, mu_e: np.ndarray, sig_e: np.ndarray, rho: float = 0.60):
+        self.rho = rho
+        self.Tcum = np.concatenate([[0.0], np.cumsum(mu_e)])
+        self.S1 = np.concatenate([[0.0], np.cumsum(sig_e)])
+        self.S2 = np.concatenate([[0.0], np.cumsum(sig_e ** 2)])
+
+    def query(self, i: int, j: int, kappa: float = 1.036):
+        mu = float(self.Tcum[j] - self.Tcum[i])
+        ds1, ds2 = float(self.S1[j] - self.S1[i]), float(self.S2[j] - self.S2[i])
+        V = (1.0 - self.rho) * ds2 + self.rho * (ds1 ** 2)
+        s2 = math.log(1.0 + V / max(1.0, mu ** 2))
+        q85 = mu * max(1.03, math.exp(-0.5 * s2 + kappa * math.sqrt(s2)))
+        return mu, V, q85</code></pre>
+          </section>
+
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">4. Where It Lives in Our Repo</h4>
+            <div class="space-y-2.5 text-xs">
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/model/live_blender.py</span>
+                  <span class="text-amber-300">LiveStateTracker &amp; PrecomputedHorizonTable &bull; L235–399</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L254–282:</span> Evaluates ratio-space decay <code class="text-cyan-300">1.0 + alpha * (q_obs - 1.0)</code>; <span class="text-slate-400 font-mono">L336–393:</span> slices precomputed <code class="text-cyan-300">mu_tensor</code> &amp; <code class="text-cyan-300">sigma_tensor</code> with O(1) linear interpolation across 15-min bins.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/wait_estimator.py</span>
+                  <span class="text-amber-300">RoutePrefixArrays.get_leg_stats() &bull; L100–133</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L127–133:</span> Computes <code class="text-cyan-300">mu_leg = Tcum[j] - Tcum[i]</code> and <code class="text-cyan-300">V_leg = (1 - rho)*s2_diff + rho*(s1_diff**2)</code> with <code class="text-cyan-300">RHO_EMPIRICAL = 0.600</code> in O(1).
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/raptor.py</span>
+                  <span class="text-amber-300">_build_journey_from_bus_legs() &bull; L732–736</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L733–735:</span> Converts total journey mean <code class="text-cyan-300">mu_J</code> and variance <code class="text-cyan-300">V_J</code> into lognormal <code class="text-cyan-300">q85_J</code> using <code class="text-cyan-300">kappa = 1.036</code>.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      <!-- =================================================================== -->
+      <!-- MODULE 5 -->
+      <!-- =================================================================== -->
+      <article id="module-5" class="scroll-mt-20 space-y-6 pt-4 border-t border-slate-800/80">
+        <div class="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+          <div>
+            <div class="text-xs font-mono uppercase tracking-widest text-emerald-400">Module 05 &bull; Round-Based DP &amp; Stochastic Arrival Calculus</div>
+            <h3 class="text-xl sm:text-2xl font-extrabold text-white mt-1">
+              RAPTOR, Chriqui-Robillard Common Lines &amp; Live + Poisson Wait
+            </h3>
+          </div>
+          <div class="flex flex-wrap gap-1.5 text-[11px] font-mono">
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-emerald-300">Rounds k=1,2,3</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-cyan-300">Attractive Set A(u,v)</span>
+            <span class="px-2.5 py-1 rounded bg-slate-800 border border-slate-700 text-amber-300">Hybrid Live + Poisson</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <!-- PANEL 1 -->
+          <section class="xl:col-span-5 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-emerald-400">1. The Big Picture &amp; Notebook Flowchart</h4>
+              <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950 text-emerald-300 border border-emerald-800/60">Pareto Optimal</span>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/90 border border-slate-800 p-3">
+              <svg viewBox="0 0 460 180" class="w-full h-auto">
+                <defs>
+                  <marker id="arrowE5" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto">
+                    <path d="M0,0 L6,3 L0,6 Z" fill="#10b981" />
+                  </marker>
+                </defs>
+                <rect x="8" y="12" width="136" height="66" rx="8" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+                <text x="76" y="30" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="JetBrains Mono" font-weight="700">RAPTOR ROUND k</text>
+                <text x="76" y="45" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Scan marked routes</text>
+                <text x="76" y="60" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Zero priority queue!</text>
+
+                <line x1="144" y1="45" x2="164" y2="45" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrowE5)"/>
+
+                <rect x="166" y="12" width="136" height="66" rx="8" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="234" y="30" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">COMMON LINES A(u,v)</text>
+                <text x="234" y="45" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Greedy T_r &lt; W_A+Tbar</text>
+                <text x="234" y="60" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Board 1st bus in A</text>
+
+                <line x1="302" y1="45" x2="322" y2="45" stroke="#10b981" stroke-width="1.5" marker-end="url(#arrowE5)"/>
+
+                <rect x="324" y="12" width="128" height="66" rx="8" fill="#0f172a" stroke="#f59e0b" stroke-width="1.5"/>
+                <text x="388" y="30" text-anchor="middle" fill="#fcd34d" font-size="9" font-family="JetBrains Mono" font-weight="700">LIVE + POISSON</text>
+                <text x="388" y="45" text-anchor="middle" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">Gate live ETA &Delta;*</text>
+                <text x="388" y="60" text-anchor="middle" fill="#94a3b8" font-size="8" font-family="JetBrains Mono">Pool untracked &Lambda;</text>
+
+                <rect x="8" y="96" width="444" height="72" rx="8" fill="#0f172a" stroke="#334155" stroke-width="1"/>
+                <text x="20" y="115" fill="#67e8f9" font-size="9" font-family="JetBrains Mono" font-weight="700">WHY RAPTOR + COMMON LINES BEATS DIJKSTRA:</text>
+                <text x="20" y="132" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">&bull; Dijkstra pops a binary heap per stop (cache-unfriendly) &amp; picks only 1 fixed bus line.</text>
+                <text x="20" y="147" fill="#cbd5e1" font-size="8.5" font-family="Plus Jakarta Sans">&bull; RAPTOR sweeps contiguous CSR routes in k rounds &amp; pools parallel buses into A(u,v).</text>
+              </svg>
+            </div>
+
+            <div class="rounded-lg bg-slate-900/70 border border-slate-800 px-3 py-2 text-xs">
+              $$T_r &lt; W_A + \bar{T}_A, \qquad E[W_A] = \frac{1 - e^{-\Lambda \Delta^*}}{\Lambda}, \qquad \Lambda = \sum_{r \in A_{\text{live}}}\frac{1-\text{cov}_r}{EH_r} + \sum_{r \in A_{\text{untracked}}}\frac{1}{EW_r}$$
+            </div>
+
+            <div class="space-y-2.5 text-xs text-slate-300 leading-relaxed">
+              <p>
+                <strong class="text-white">Intuition 1 (Chriqui-Robillard):</strong> At a corridor stop, you don't wait 20 minutes for Route 425 if Route 449 arrives first and gets you there almost as fast—yet you <em>skip</em> a slow scenic route whose extra ride time exceeds the expected wait saved! Sorting routes by $T_r$ and stopping when $T_r \ge W_A + \bar{T}_A$ solves this exactly.
+              </p>
+              <p>
+                <strong class="text-white">Intuition 2 (Live + Untracked Fleet):</strong> If 60% of buses have GPS and the nearest tracked bus arrives in $\Delta^* = 12$ mins, an untracked bus might still show up sooner! Modeling untracked arrivals as a Poisson hazard $\Lambda$ yields the closed-form truncated exponential expectation $E[W_A] = (1 - e^{-\Lambda\Delta^*}) / \Lambda$.
+              </p>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-2.5 text-[11px] text-slate-400">
+                <strong class="text-amber-300">Where else to reuse:</strong> Multi-region LLM/GPU request hedging, parallel queue routing with partial telemetry, logistics carrier pooling.
+              </div>
+            </div>
+          </section>
+
+          <!-- PANEL 2: Interactive Visual Sandboxes (5A & 5B) -->
+          <section class="xl:col-span-7 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-5">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-emerald-400">2. Interactive Visual Sandboxes (5A &amp; 5B)</h4>
+              <span class="text-[10px] font-mono text-slate-400">Live Greedy Solver &amp; Poisson Calculus</span>
+            </div>
+
+            <!-- Sandbox 5A: Chriqui-Robillard Attractive Set Builder -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-cyan-300">Sandbox 5A: Chriqui-Robillard Attractive Set Builder (<code class="text-emerald-300">T_r &lt; W_A + T_bar_A</code>)</div>
+                  <div class="text-[11px] text-slate-400">Edit headways <code class="text-slate-200">EH_r</code> &amp; ride times <code class="text-slate-200">T_r</code> for 5 candidate routes (U &rarr; V) and watch slow lines get pruned live</div>
+                </div>
+                <div class="flex gap-1.5 text-[11px] font-mono">
+                  <button onclick="loadM5Preset('delhi')" class="px-2 py-1 rounded bg-cyan-950 hover:bg-cyan-900 border border-cyan-700 text-cyan-300">Delhi Corridor</button>
+                  <button onclick="loadM5Preset('express')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300">Express vs Local</button>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto rounded-lg border border-slate-800 bg-slate-950">
+                <table class="w-full text-xs font-mono text-left">
+                  <thead class="bg-slate-900 text-[10px] uppercase text-slate-400 border-b border-slate-800">
+                    <tr>
+                      <th class="px-3 py-2">Route</th>
+                      <th class="px-3 py-2">Headway EH (min)</th>
+                      <th class="px-3 py-2">Ride T_r (min)</th>
+                      <th class="px-3 py-2">Threshold W_A+T&#772;_A</th>
+                      <th class="px-3 py-2">Decision</th>
+                    </tr>
+                  </thead>
+                  <tbody id="m5CrBody" class="divide-y divide-slate-800/80"></tbody>
+                </table>
+              </div>
+
+              <div class="grid grid-cols-3 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Single Best Wait</div>
+                  <div id="m5SingleWait" class="text-rose-300 font-bold">18.0 min</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Pooled Wait W_A</div>
+                  <div id="m5PooledWait" class="text-emerald-300 font-bold">3.5 min</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Attractive Mean T&#772;_A</div>
+                  <div id="m5TbarOut" class="text-cyan-300 font-bold">23.4 min</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Sandbox 5B: Unified Live Bus + Untracked Fleet Poisson Wait Simulator -->
+            <div class="rounded-xl border border-slate-800 bg-slate-900/70 p-4 space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div class="text-xs font-bold text-amber-300">Sandbox 5B: Live Bus + Untracked Fleet Poisson Wait Simulator</div>
+                  <div class="text-[11px] text-slate-400">Evaluates catch probability gate &amp; <code class="text-cyan-300">E[W_A] = (1 - exp(-&Lambda;&Delta;*)) / &Lambda;</code></div>
+                </div>
+                <div id="m5GateBadge" class="text-[11px] font-mono px-2.5 py-1 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-bold">
+                  LIVE GATE PASSED
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Live ETA <code class="text-cyan-300">&Delta;*</code></span><strong id="m5DeltaVal" class="text-cyan-300">10 m</strong></div>
+                  <input id="m5DeltaSlider" type="range" min="1" max="30" step="0.5" value="10" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>GPS &sigma;_b</span><strong id="m5SigVal" class="text-amber-300">90 s</strong></div>
+                  <input id="m5SigSlider" type="range" min="15" max="420" step="15" value="90" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Coverage <code class="text-emerald-300">cov_r</code></span><strong id="m5CovVal" class="text-emerald-300">65%</strong></div>
+                  <input id="m5CovSlider" type="range" min="0" max="100" step="5" value="65" class="w-full" />
+                </label>
+                <label class="space-y-1">
+                  <div class="flex justify-between font-mono"><span>Prior <code class="text-slate-200">EH</code></span><strong id="m5EhVal" class="text-slate-200">12 m</strong></div>
+                  <input id="m5EhSlider" type="range" min="4" max="30" step="1" value="12" class="w-full" />
+                </label>
+              </div>
+
+              <canvas id="m5PoissonCanvas" class="w-full h-52 rounded-lg bg-slate-950 border border-slate-800"></canvas>
+
+              <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] font-mono">
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Catch Prob (Gate &ge;0.5)</div>
+                  <div id="m5CatchProb" class="text-emerald-300 font-bold">0.900</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Untracked Rate &Lambda;</div>
+                  <div id="m5LambdaOut" class="text-amber-300 font-bold">0.029 /min</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">P(Live Bus Wins) e^-&Lambda;&Delta;*</div>
+                  <div id="m5ExpOut" class="text-cyan-300 font-bold">74.7%</div>
+                </div>
+                <div class="bg-slate-950 border border-slate-800 rounded p-2">
+                  <div class="text-slate-400">Expected Wait E[W_A]</div>
+                  <div id="m5EwOut" class="text-emerald-300 font-bold">8.68 min</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Panel 3 & Panel 4 -->
+        <div class="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h4 class="text-xs font-mono uppercase tracking-wider text-amber-400">3. Reusable 15-Line Python Pattern (Common Lines + Hybrid Wait)</h4>
+              <button onclick="copyCode('code-m5', this)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-[11px] font-mono text-cyan-300 transition">Copy Pattern</button>
+            </div>
+            <pre id="code-m5" class="rounded-lg bg-slate-900 border border-slate-800 p-3.5 text-[11.5px] leading-relaxed text-slate-200 overflow-x-auto"><code>import math
+
+def chriqui_robillard_select(routes_t_ew):
+    lam, wt_t, chosen = 0.0, 0.0, []
+    for r, T_r, EW_r in sorted(routes_t_ew, key=lambda x: x[1]):
+        if chosen and T_r &gt;= (1.0 / lam) + (wt_t / lam):
+            break
+        w_r = 1.0 / max(60.0, EW_r)
+        lam += w_r; wt_t += w_r * T_r; chosen.append((r, T_r, EW_r))
+    return chosen, 1.0 / lam, wt_t / lam
+
+def hybrid_live_poisson_wait(delta_star, sigma_b, lam_untracked):
+    if delta_star is None or delta_star &gt; 1500.0:
+        return 1.0 / max(1e-4, lam_untracked)
+    x = lam_untracked * delta_star
+    return delta_star * (1.0 - 0.5 * x) if x &lt; 1e-5 else (1.0 - math.exp(-x)) / lam_untracked</code></pre>
+          </section>
+
+          <section class="xl:col-span-6 rounded-xl border border-slate-800 bg-slate-950/70 p-5 space-y-3">
+            <h4 class="text-xs font-mono uppercase tracking-wider text-cyan-400">4. Where It Lives in Our Repo</h4>
+            <div class="space-y-2.5 text-xs">
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/raptor.py</span>
+                  <span class="text-amber-300">_raptor_scan_jit() &bull; L90–276</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L132–243:</span> Scans marked CSR routes in rounds <code class="text-cyan-300">k = 1..n_rounds</code> using prefix <code class="text-cyan-300">Tcum</code> and binary-searching <code class="text-cyan-300">cl_keys</code> (<code class="text-cyan-300">_bsearch_cl_jit</code> L74–87) for common-lines wait reduction; <span class="text-slate-400 font-mono">L246–274:</span> relaxes footpaths banning WALK &rarr; WALK.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/transit_graph.py</span>
+                  <span class="text-amber-300">_build_common_line_entries() &bull; L748–970</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L865–893:</span> Sorts candidate routes by ride time <code class="text-cyan-300">t_b</code> and runs the exact Chriqui-Robillard greedy rule <code class="text-cyan-300">t_r &lt; wait_a + t_bar_a</code> across all 4 diurnal buckets.
+                </p>
+              </div>
+              <div class="rounded-lg bg-slate-900 border border-slate-800 p-3 space-y-1">
+                <div class="flex flex-wrap items-center justify-between gap-2 font-mono">
+                  <span class="text-emerald-300 font-semibold">src/router/wait_estimator.py</span>
+                  <span class="text-amber-300">compute_leg_wait_and_ride() &bull; L330–535</span>
+                </div>
+                <p class="text-slate-300 text-[11.5px]">
+                  <span class="text-slate-400 font-mono">L427–436:</span> Enforces the 3 live-bus gates (<code class="text-cyan-300">0 &le; ETA - t_q &le; 1500s</code>, <code class="text-cyan-300">sigma_b &le; 0.5*EH</code>, <code class="text-cyan-300">0.9*Phi(z) &ge; 0.5</code>); <span class="text-slate-400 font-mono">L449–458 &amp; L509–522:</span> pools <code class="text-cyan-300">(1 - cov_m) / eh_m</code> and computes <code class="text-cyan-300">E_W = (1 - exp(-x)) / Lambda</code>.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </article>
+
+      <!-- Footer -->
+      <footer class="border-t border-slate-800 pt-6 pb-10 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400 font-mono">
+        <div>Delhi Transit Planner &bull; First-Principles Systems &amp; ML Workbook</div>
+        <a href="/" class="text-cyan-400 hover:text-cyan-300 transition">&larr; Back to Interactive Route Planner (/)</a>
+      </footer>
+    </main>
+  </div>
+
+  <!-- Interactive Sandboxes JavaScript -->
+  <script>
+    // =========================================================================
+    // Shared Helpers: HiDPI Canvas Setup & Clipboard Copy
+    // =========================================================================
+    function setupCanvas(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(300, Math.floor(rect.width));
+      const h = Math.max(150, Math.floor(rect.height));
+      if (canvas.width !== Math.floor(w * dpr) || canvas.height !== Math.floor(h * dpr)) {
+        canvas.width = Math.floor(w * dpr);
+        canvas.height = Math.floor(h * dpr);
+      }
+      const ctx = canvas.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      return { ctx, w, h };
+    }
+
+    function copyCode(preId, btn) {
+      const el = document.getElementById(preId);
+      const text = el ? el.innerText : '';
+      navigator.clipboard.writeText(text).then(() => {
+        const orig = btn.innerText;
+        btn.innerText = 'Copied!';
+        btn.classList.add('text-emerald-300');
+        setTimeout(() => {
+          btn.innerText = orig;
+          btn.classList.remove('text-emerald-300');
+        }, 1400);
+      });
+    }
+
+    function normCdf(z) {
+      const t = 1 / (1 + 0.2316419 * Math.abs(z));
+      const d = 0.3989423 * Math.exp(-z * z / 2);
+      const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274))));
+      return z >= 0 ? 1 - p : p;
+    }
+
+    // =========================================================================
+    // MODULE 1: Sandbox 1A (Protobuf vs JSON) & Sandbox 1B (CSR Memory)
+    // =========================================================================
+    const m1FleetSlider = document.getElementById('m1FleetSlider');
+    function updateM1Payload() {
+      const n = Number(m1FleetSlider.value);
+      document.getElementById('m1FleetLabel').textContent = n.toLocaleString();
+      const jsonBytes = n * 245;
+      const pbBytes = n * 38;
+      const fmtSize = (b) => b >= 1048576 ? (b / 1048576).toFixed(2) + ' MB' : (b / 1024).toFixed(1) + ' KB';
+      document.getElementById('m1JsonSize').textContent = fmtSize(jsonBytes);
+      document.getElementById('m1PbSize').textContent = fmtSize(pbBytes);
+      document.getElementById('m1PbBar').style.width = ((pbBytes / jsonBytes) * 100).toFixed(1) + '%';
+
+      // 5 Mbps = 625,000 bytes/sec
+      const jsonMs = Math.round((jsonBytes * 8) / 5000);
+      const pbMs = Math.round((pbBytes * 8) / 5000);
+      document.getElementById('m1JsonTime').textContent = jsonMs + ' ms';
+      document.getElementById('m1PbTime').textContent = pbMs + ' ms';
+
+      // 8640 polls/day (every 10s)
+      const jsonGb = (jsonBytes * 8640) / 1e9;
+      const pbGb = (pbBytes * 8640) / 1e9;
+      document.getElementById('m1JsonDay').textContent = jsonGb.toFixed(2) + ' GB';
+      document.getElementById('m1PbDay').textContent = pbGb.toFixed(2) + ' GB';
+      document.getElementById('m1SavingsRatio').textContent = (jsonBytes / pbBytes).toFixed(2) + 'x smaller';
+    }
+    m1FleetSlider.addEventListener('input', updateM1Payload);
+
+    // Sandbox 1B: CSR Flat Array Visualizer
+    const csrRoutes = [
+      { name: 'R0 (425)', stops: [12, 45, 78, 91] },
+      { name: 'R1 (449)', stops: [45, 62, 78] },
+      { name: 'R2 (502)', stops: [8, 19, 31, 45, 84] },
+      { name: 'R3 (764)', stops: [101, 114, 120, 128] },
+    ];
+    const csrOffsets = [0];
+    const csrFlat = [];
+    csrRoutes.forEach((rt) => {
+      rt.stops.forEach((s) => csrFlat.push(s));
+      csrOffsets.push(csrFlat.length);
+    });
+    let selectedCsrRoute = 0;
+
+    function initM1RouteButtons() {
+      const wrap = document.getElementById('m1RouteBtns');
+      wrap.innerHTML = '';
+      csrRoutes.forEach((rt, idx) => {
+        const btn = document.createElement('button');
+        btn.textContent = rt.name;
+        btn.className = idx === selectedCsrRoute
+          ? 'px-2 py-1 rounded text-[11px] font-mono bg-emerald-500/20 border border-emerald-400 text-emerald-300 font-bold'
+          : 'px-2 py-1 rounded text-[11px] font-mono bg-slate-800 border border-slate-700 text-slate-300 hover:border-cyan-500';
+        btn.onclick = () => { selectedCsrRoute = idx; initM1RouteButtons(); drawM1Csr(); };
+        wrap.appendChild(btn);
+      });
+    }
+
+    function drawM1Csr() {
+      const canvas = document.getElementById('m1CsrCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const s = csrOffsets[selectedCsrRoute];
+      const e = csrOffsets[selectedCsrRoute + 1];
+      const sliceLen = e - s;
+
+      // Top section: Pointer-chasing List-of-Lists
+      ctx.fillStyle = '#fca5a5';
+      ctx.font = '600 10.5px "JetBrains Mono", monospace';
+      ctx.fillText('Python list[list[int]]: Pointer Chasing (Scattered Heap PyObjects)', 14, 20);
+
+      const rowW = Math.min(72, (w - 40) / csrRoutes.length - 10);
+      csrRoutes.forEach((rt, rIdx) => {
+        const rx = 14 + rIdx * (rowW + 12);
+        const ry = 30;
+        const active = rIdx === selectedCsrRoute;
+        ctx.fillStyle = active ? 'rgba(244,63,94,0.2)' : '#0f172a';
+        ctx.strokeStyle = active ? '#fb7185' : '#334155';
+        ctx.lineWidth = active ? 1.8 : 1;
+        ctx.beginPath();
+        ctx.roundRect(rx, ry, rowW, 24, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = active ? '#fecdd3' : '#94a3b8';
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillText(`ptr[${rIdx}]*`, rx + 8, ry + 15);
+
+        // Scatter boxes on the right/below
+        const boxX = 14 + ((rIdx * 107 + 20) % Math.max(120, w - 160));
+        const boxY = 66 + (rIdx % 2) * 18;
+        ctx.strokeStyle = active ? 'rgba(251,113,133,0.7)' : 'rgba(71,85,105,0.4)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(rx + rowW / 2, ry + 24);
+        ctx.lineTo(boxX + 45, boxY);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.fillStyle = active ? 'rgba(244,63,94,0.18)' : '#0f172a';
+        ctx.strokeStyle = active ? '#fb7185' : '#334155';
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, 125, 16, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = active ? '#fda4af' : '#64748b';
+        ctx.font = '9.5px "JetBrains Mono", monospace';
+        ctx.fillText(`[${rt.stops.join(',')}]`, boxX + 6, boxY + 11.5);
+      });
+
+      // Divider
+      ctx.strokeStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.moveTo(14, 108);
+      ctx.lineTo(w - 14, 108);
+      ctx.stroke();
+
+      // Bottom section: Contiguous CSR Float32/Int32 Arrays
+      ctx.fillStyle = '#6ee7b7';
+      ctx.font = '600 10.5px "JetBrains Mono", monospace';
+      ctx.fillText('CSR Contiguous Memory: offsets[] + flat_stops[] (1 Cache Line = 64B = 16 ints)', 14, 126);
+
+      // Offsets strip
+      const offCellW = 36;
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillText('offsets:', 14, 148);
+      csrOffsets.forEach((ov, i) => {
+        const cx = 74 + i * (offCellW + 4);
+        const isBound = i === selectedCsrRoute || i === selectedCsrRoute + 1;
+        ctx.fillStyle = isBound ? 'rgba(245,158,11,0.22)' : '#0f172a';
+        ctx.strokeStyle = isBound ? '#fbbf24' : '#334155';
+        ctx.lineWidth = isBound ? 1.8 : 1;
+        ctx.beginPath();
+        ctx.roundRect(cx, 134, offCellW, 20, 4);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = isBound ? '#fde68a' : '#94a3b8';
+        ctx.fillText(String(ov), cx + 12, 148);
+      });
+
+      // Flat array strip
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillText('flat[]:', 14, 186);
+      const cellW = Math.min(34, (w - 94) / csrFlat.length - 3);
+      csrFlat.forEach((val, idx) => {
+        const cx = 74 + idx * (cellW + 3);
+        const inSlice = idx >= s && idx < e;
+        ctx.fillStyle = inSlice ? 'rgba(16,185,129,0.25)' : '#0f172a';
+        ctx.strokeStyle = inSlice ? '#34d399' : '#334155';
+        ctx.lineWidth = inSlice ? 1.8 : 1;
+        ctx.beginPath();
+        ctx.roundRect(cx, 170, cellW, 24, 4);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = inSlice ? '#a7f3d0' : '#64748b';
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillText(String(val), cx + 6, 185);
+      });
+
+      // Slice bracket
+      const bx1 = 74 + s * (cellW + 3);
+      const bx2 = 74 + e * (cellW + 3) - 3;
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(bx1, 198);
+      ctx.lineTo(bx1, 204);
+      ctx.lineTo(bx2, 204);
+      ctx.lineTo(bx2, 198);
+      ctx.stroke();
+      ctx.fillStyle = '#67e8f9';
+      ctx.font = '600 10px "JetBrains Mono", monospace';
+      ctx.fillText(`Contiguous slice [${s}:${e}] -> ${sliceLen} elements (${sliceLen * 4} B)`, bx1, 217);
+
+      // Update readouts
+      document.getElementById('m1SliceRange').textContent = `offsets[${selectedCsrRoute}..${selectedCsrRoute + 1}] = [${s} : ${e}]`;
+      document.getElementById('m1CacheLines').textContent = `1 hit (${sliceLen * 4}B / 64B line)`;
+      document.getElementById('m1PtrHops').textContent = `${sliceLen + 1} heap derefs`;
+      document.getElementById('m1MemFootprint').textContent = `${sliceLen * 4} B vs ${56 + sliceLen * 36} B`;
+    }
+
+    document.getElementById('m1CsrCanvas').addEventListener('click', () => {
+      selectedCsrRoute = (selectedCsrRoute + 1) % csrRoutes.length;
+      initM1RouteButtons();
+      drawM1Csr();
+    });
+
+    // =========================================================================
+    // MODULE 2: Sandbox 2A (2D->1D Vector Projection) & Sandbox 2B (PAVA)
+    // =========================================================================
+    // Polyline vertices in "meters" space (0..900 x 0..220)
+    const polyPts = [
+      { x: 60, y: 165, label: 'A (0m)' },
+      { x: 240, y: 70, label: 'B' },
+      { x: 470, y: 145, label: 'C' },
+      { x: 680, y: 55, label: 'D' },
+    ];
+    let gpsPoint = { x: 340, y: 48 };
+    let draggingGps = false;
+
+    function projectGpsToPolyline(px, py, pts) {
+      let best = { dist: 1e9, t: 0, seg: 0, projX: pts[0].x, projY: pts[0].y, arcM: 0 };
+      let cumS = 0;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const ax = pts[i].x, ay = pts[i].y;
+        const bx = pts[i + 1].x, by = pts[i + 1].y;
+        const abx = bx - ax, aby = by - ay;
+        const len2 = abx * abx + aby * aby;
+        const len = Math.sqrt(len2);
+        const apx = px - ax, apy = py - ay;
+        const tRaw = (apx * abx + apy * aby) / len2;
+        const t = Math.max(0, Math.min(1, tRaw));
+        const qx = ax + t * abx;
+        const qy = ay + t * aby;
+        const d = Math.hypot(px - qx, py - qy);
+        if (d < best.dist) {
+          best = { dist: d, t, seg: i, projX: qx, projY: qy, arcM: cumS + t * len };
+        }
+        cumS += len;
+      }
+      return best;
+    }
+
+    function drawM2Proj() {
+      const canvas = document.getElementById('m2ProjCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const scaleX = w / 740;
+      const scaleY = h / 220;
+      const toC = (pt) => ({ x: pt.x * scaleX, y: pt.y * scaleY });
+
+      // 1px ~ 1.4 meters scale for intuitive 75m gate
+      const mPerUnit = 1.4;
+      const gateUnits = 75.0 / mPerUnit;
+
+      // Draw 75m off-route corridor band
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.11)';
+      ctx.lineWidth = gateUnits * 2 * Math.min(scaleX, scaleY);
+      ctx.beginPath();
+      polyPts.forEach((p, idx) => {
+        const c = toC(p);
+        if (idx === 0) ctx.moveTo(c.x, c.y);
+        else ctx.lineTo(c.x, c.y);
+      });
+      ctx.stroke();
+
+      // Polyline road centerline
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      polyPts.forEach((p, idx) => {
+        const c = toC(p);
+        if (idx === 0) ctx.moveTo(c.x, c.y);
+        else ctx.lineTo(c.x, c.y);
+      });
+      ctx.stroke();
+
+      // Vertices
+      polyPts.forEach((p) => {
+        const c = toC(p);
+        ctx.fillStyle = '#0f172a';
+        ctx.strokeStyle = '#67e8f9';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillText(p.label, c.x - 10, c.y + 18);
+      });
+
+      const res = projectGpsToPolyline(gpsPoint.x, gpsPoint.y, polyPts);
+      const perpM = res.dist * mPerUnit;
+      const arcM = res.arcM * mPerUnit;
+      const offRoute = perpM > 75.0;
+
+      const cGps = toC(gpsPoint);
+      const cProj = toC({ x: res.projX, y: res.projY });
+      const cA = toC(polyPts[res.seg]);
+
+      // Vector AP
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.45)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 4]);
+      ctx.beginPath();
+      ctx.moveTo(cA.x, cA.y);
+      ctx.lineTo(cGps.x, cGps.y);
+      ctx.stroke();
+
+      // Highlighted projected portion A -> proj
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(cA.x, cA.y);
+      ctx.lineTo(cProj.x, cProj.y);
+      ctx.stroke();
+
+      // Perpendicular error vector
+      ctx.strokeStyle = offRoute ? '#f43f5e' : '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(cGps.x, cGps.y);
+      ctx.lineTo(cProj.x, cProj.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Snapped point on polyline
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath();
+      ctx.arc(cProj.x, cProj.y, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draggable GPS ping dot
+      ctx.fillStyle = offRoute ? 'rgba(244,63,94,0.28)' : 'rgba(245,158,11,0.28)';
+      ctx.beginPath();
+      ctx.arc(cGps.x, cGps.y, 14, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = offRoute ? '#f43f5e' : '#fbbf24';
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cGps.x, cGps.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#fde68a';
+      ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
+      ctx.fillText(`P (${perpM.toFixed(1)}m)`, cGps.x + 12, cGps.y - 8);
+
+      // Update DOM metrics
+      const segLabels = ['Seg 0 (A→B)', 'Seg 1 (B→C)', 'Seg 2 (C→D)'];
+      document.getElementById('m2SegIdx').textContent = segLabels[res.seg];
+      document.getElementById('m2TProj').textContent = res.t.toFixed(2);
+      document.getElementById('m2PerpDist').textContent = perpM.toFixed(1) + ' m';
+      document.getElementById('m2PerpDist').className = offRoute ? 'text-rose-400 font-bold' : 'text-emerald-300 font-bold';
+      document.getElementById('m2ArcDist').textContent = arcM.toFixed(1) + ' m';
+      const badge = document.getElementById('m2OffRouteBadge');
+      if (offRoute) {
+        badge.textContent = 'OFF-ROUTE STRIKE (> 75m)';
+        badge.className = 'text-[11px] font-mono px-2.5 py-1 rounded bg-rose-950 border border-rose-700 text-rose-300 font-bold';
+      } else {
+        badge.textContent = 'ON-ROUTE (<= 75m)';
+        badge.className = 'text-[11px] font-mono px-2.5 py-1 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-bold';
+      }
+    }
+
+    const m2ProjCanvas = document.getElementById('m2ProjCanvas');
+    function updateGpsFromPointer(ev) {
+      const rect = m2ProjCanvas.getBoundingClientRect();
+      const cx = Math.max(10, Math.min(rect.width - 10, ev.clientX - rect.left));
+      const cy = Math.max(10, Math.min(rect.height - 10, ev.clientY - rect.top));
+      gpsPoint.x = (cx / rect.width) * 740;
+      gpsPoint.y = (cy / rect.height) * 220;
+      drawM2Proj();
+    }
+    m2ProjCanvas.addEventListener('pointerdown', (e) => { draggingGps = true; m2ProjCanvas.setPointerCapture(e.pointerId); updateGpsFromPointer(e); });
+    m2ProjCanvas.addEventListener('pointermove', (e) => { if (draggingGps) updateGpsFromPointer(e); });
+    m2ProjCanvas.addEventListener('pointerup', () => { draggingGps = false; });
+
+    // Sandbox 2B: Interactive PAVA Playground
+    const pavaStopDists = [0, 350, 750, 1150, 1500];
+    const pavaDefaultPings = [
+      { t: 0, d: 35 },    // Terminal layover (<100m)
+      { t: 25, d: 55 },   // Terminal layover (<100m)
+      { t: 50, d: 210 },
+      { t: 75, d: 480 },
+      { t: 100, d: 410 }, // Backward GPS glitch!
+      { t: 125, d: 720 },
+      { t: 150, d: 990 },
+      { t: 175, d: 940 }, // Backward GPS glitch!
+      { t: 200, d: 1320 },
+      { t: 225, d: 1465 } // Final stop zone (>1400m)
+    ];
+    let pavaPings = pavaDefaultPings.map((p) => ({ ...p }));
+    let dragPavaIdx = -1;
+
+    function resetM2Pava() {
+      pavaPings = pavaDefaultPings.map((p) => ({ ...p }));
+      drawM2Pava();
+    }
+
+    // Exact Pool-Adjacent-Violators Algorithm (O(n))
+    function runPava(values) {
+      const blocks = []; // { sum, count, indices }
+      for (let i = 0; i < values.length; i++) {
+        blocks.push({ sum: values[i], count: 1, start: i, end: i });
+        while (blocks.length >= 2) {
+          const b2 = blocks[blocks.length - 1];
+          const b1 = blocks[blocks.length - 2];
+          if (b1.sum / b1.count > b2.sum / b2.count) {
+            b1.sum += b2.sum;
+            b1.count += b2.count;
+            b1.end = b2.end;
+            blocks.pop();
+          } else {
+            break;
+          }
+        }
+      }
+      const out = new Array(values.length);
+      blocks.forEach((b) => {
+        const avg = b.sum / b.count;
+        for (let k = b.start; k <= b.end; k++) out[k] = avg;
+      });
+      return { mono: out, nBlocks: blocks.length };
+    }
+
+    function drawM2Pava() {
+      const canvas = document.getElementById('m2PavaCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = { l: 54, r: 22, t: 20, b: 30 };
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      const toX = (t) => pad.l + (t / 240) * pw;
+      const toY = (d) => pad.t + ph - (d / 1600) * ph;
+
+      // Grid & Canonical Stop horizontal lines
+      ctx.font = '10px "JetBrains Mono", monospace';
+      pavaStopDists.forEach((sd, idx) => {
+        const y = toY(sd);
+        ctx.strokeStyle = 'rgba(51, 65, 85, 0.65)';
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(pad.l, y);
+        ctx.lineTo(w - pad.r, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`S${idx} (${sd}m)`, 6, y + 3);
+      });
+
+      // 100m Terminal Layover shading
+      const stripLayover = document.getElementById('m2ChkLayover').checked;
+      const doPava = document.getElementById('m2ChkPava').checked;
+      const doInterp = document.getElementById('m2ChkInterp').checked;
+
+      if (stripLayover) {
+        ctx.fillStyle = 'rgba(245, 158, 11, 0.08)';
+        ctx.fillRect(pad.l, toY(100), pw, toY(0) - toY(100));
+        ctx.fillRect(pad.l, toY(1500), pw, toY(1400) - toY(1500));
+      }
+
+      // Count raw backward violations
+      let rawViols = 0;
+      for (let i = 1; i < pavaPings.length; i++) {
+        if (pavaPings[i].d < pavaPings[i - 1].d) rawViols++;
+      }
+
+      // 1) Terminal truncation (100m zone of S0=0 and S4=1500)
+      let startI = 0, endI = pavaPings.length;
+      if (stripLayover) {
+        const depZone = [];
+        pavaPings.forEach((p, idx) => { if (p.d <= 100) depZone.push(idx); });
+        if (depZone.length > 0 && depZone[depZone.length - 1] < pavaPings.length - 1) {
+          startI = depZone[depZone.length - 1];
+        }
+        for (let i = startI + 1; i < pavaPings.length; i++) {
+          if (pavaPings[i].d >= 1400) { endI = i + 1; break; }
+        }
+      }
+      const strippedCount = startI + (pavaPings.length - endI);
+      const activePings = pavaPings.slice(startI, endI).map((p) => ({ ...p }));
+      if (stripLayover && activePings.length >= 2) {
+        if (activePings[0].d <= 100) activePings[0].d = 0;
+        if (activePings[activePings.length - 1].d >= 1400) activePings[activePings.length - 1].d = 1500;
+      }
+
+      // Raw jagged line
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      pavaPings.forEach((p, idx) => {
+        const x = toX(p.t), y = toY(p.d);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // 2) Run PAVA
+      const activeD = activePings.map((p) => p.d);
+      const pavaRes = doPava ? runPava(activeD) : { mono: activeD, nBlocks: activeD.length };
+
+      // Draw monotonic curve
+      ctx.strokeStyle = doPava ? '#10b981' : '#38bdf8';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      activePings.forEach((p, idx) => {
+        const x = toX(p.t), y = toY(pavaRes.mono[idx]);
+        if (idx === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+
+      // 3) Interpolate canonical stop timestamps (collapse flat spots to max t)
+      const uniqueD = [], uniqueT = [];
+      for (let i = 0; i < pavaRes.mono.length; i++) {
+        const dv = pavaRes.mono[i];
+        if (uniqueD.length === 0 || Math.abs(dv - uniqueD[uniqueD.length - 1]) > 1e-4) {
+          uniqueD.push(dv);
+          uniqueT.push(activePings[i].t);
+        } else {
+          uniqueT[uniqueT.length - 1] = Math.max(uniqueT[uniqueT.length - 1], activePings[i].t);
+        }
+      }
+
+      const stopTimes = {};
+      if (doInterp && uniqueD.length >= 2) {
+        pavaStopDists.forEach((sd, sIdx) => {
+          if (sd >= uniqueD[0] - 1 && sd <= uniqueD[uniqueD.length - 1] + 1) {
+            let tInterp = uniqueT[0];
+            for (let k = 0; k < uniqueD.length - 1; k++) {
+              if (sd >= uniqueD[k] - 1e-6 && sd <= uniqueD[k + 1] + 1e-6) {
+                const denom = Math.max(1e-6, uniqueD[k + 1] - uniqueD[k]);
+                const frac = (sd - uniqueD[k]) / denom;
+                tInterp = uniqueT[k] + frac * (uniqueT[k + 1] - uniqueT[k]);
+                break;
+              }
+            }
+            stopTimes[sIdx] = tInterp;
+            const sx = toX(tInterp), sy = toY(sd);
+            ctx.fillStyle = '#22d3ee';
+            ctx.strokeStyle = '#0f172a';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(sx, sy, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.fillStyle = '#67e8f9';
+            ctx.fillText(`t${sIdx}=${tInterp.toFixed(0)}s`, sx + 6, sy - 6);
+          }
+        });
+      }
+
+      // Draw draggable raw GPS dots
+      pavaPings.forEach((p, idx) => {
+        const isStripped = idx < startI || idx >= endI;
+        const x = toX(p.t), y = toY(p.d);
+        ctx.fillStyle = isStripped ? '#f59e0b' : '#f43f5e';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      });
+
+      // Axis labels
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('Time (seconds) ->', w - 120, h - 8);
+
+      // Update stats
+      document.getElementById('m2ViolCount').textContent = `${rawViols} jump${rawViols === 1 ? '' : 's'}`;
+      document.getElementById('m2StrippedCount').textContent = `${strippedCount} ping${strippedCount === 1 ? '' : 's'}`;
+      document.getElementById('m2PoolBlocks').textContent = `${pavaRes.nBlocks} block${pavaRes.nBlocks === 1 ? '' : 's'}`;
+      if (stopTimes[1] !== undefined && stopTimes[2] !== undefined) {
+        const dt = Math.max(1, stopTimes[2] - stopTimes[1]);
+        const pace = dt / 400.0;
+        const kmh = (400.0 / dt) * 3.6;
+        document.getElementById('m2InterpPace').textContent = `${pace.toFixed(2)} s/m (${kmh.toFixed(0)} km/h)`;
+      } else {
+        document.getElementById('m2InterpPace').textContent = 'Enable #2 & #3';
+      }
+    }
+
+    const m2PavaCanvas = document.getElementById('m2PavaCanvas');
+    m2PavaCanvas.addEventListener('pointerdown', (e) => {
+      const rect = m2PavaCanvas.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const pad = { l: 54, r: 22, t: 20, b: 30 };
+      const pw = rect.width - pad.l - pad.r;
+      const ph = rect.height - pad.t - pad.b;
+      let bestI = -1, bestD = 20;
+      pavaPings.forEach((p, i) => {
+        const px = pad.l + (p.t / 240) * pw;
+        const py = pad.t + ph - (p.d / 1600) * ph;
+        const d = Math.hypot(mx - px, my - py);
+        if (d < bestD) { bestD = d; bestI = i; }
+      });
+      if (bestI >= 0) {
+        dragPavaIdx = bestI;
+        m2PavaCanvas.setPointerCapture(e.pointerId);
+      }
+    });
+    m2PavaCanvas.addEventListener('pointermove', (e) => {
+      if (dragPavaIdx < 0) return;
+      const rect = m2PavaCanvas.getBoundingClientRect();
+      const pad = { t: 20, b: 30 };
+      const ph = rect.height - pad.t - pad.b;
+      const relY = Math.max(0, Math.min(ph, e.clientY - rect.top - pad.t));
+      pavaPings[dragPavaIdx].d = Math.round((1 - relY / ph) * 1600);
+      drawM2Pava();
+    });
+    m2PavaCanvas.addEventListener('pointerup', () => { dragPavaIdx = -1; });
+    ['m2ChkLayover', 'm2ChkPava', 'm2ChkInterp'].forEach((id) => {
+      document.getElementById(id).addEventListener('change', drawM2Pava);
+    });
+
+    // =========================================================================
+    // MODULE 3: Sandbox 3A (Empirical Bayes) & Sandbox 3B (Loss & Quantile)
+    // =========================================================================
+    function updateM3Eb() {
+      const n = Number(document.getElementById('m3NSlider').value);
+      const k = Number(document.getElementById('m3KSlider').value);
+      const yBar = Number(document.getElementById('m3YSlider').value);
+      const mGlob = Number(document.getElementById('m3MSlider').value);
+
+      document.getElementById('m3NVal').textContent = n;
+      document.getElementById('m3KVal').textContent = k;
+      document.getElementById('m3YVal').textContent = yBar.toFixed(2);
+      document.getElementById('m3MVal').textContent = mGlob.toFixed(2);
+
+      const wInf = n / (n + k);
+      const thetaInf = wInf * yBar + (1 - wInf) * mGlob;
+      const nLoo = Math.max(0, n - 1);
+      const wLoo = nLoo / (nLoo + k);
+      const thetaLoo = nLoo === 0 ? mGlob : (wLoo * yBar + (1 - wLoo) * mGlob);
+
+      document.getElementById('m3WInf').textContent = wInf.toFixed(3);
+      document.getElementById('m3ThetaInf').textContent = thetaInf.toFixed(3) + ' s/m';
+      document.getElementById('m3WLoo').textContent = n <= 1 ? '0.000 (0 leak!)' : wLoo.toFixed(3);
+      document.getElementById('m3ThetaLoo').textContent = thetaLoo.toFixed(3) + ' s/m';
+
+      const leakBadge = document.getElementById('m3LeakBadge');
+      leakBadge.textContent = n === 1 ? 'n=1 => LOO drops self-noise!' : `LOO Safe (n_loo=${nLoo})`;
+
+      const canvas = document.getElementById('m3EbCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = { l: 44, r: 20, t: 18, b: 26 };
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      const toX = (nv) => pad.l + (nv / 50) * pw;
+      const toY = (wv) => pad.t + ph - wv * ph;
+
+      // Grid
+      ctx.strokeStyle = 'rgba(51, 65, 85, 0.5)';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      [0, 0.5, 1.0].forEach((yv) => {
+        const y = toY(yv);
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.fillText(yv.toFixed(1), 10, y + 3);
+      });
+
+      // Curve w = x / (x + k)
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let x = 0; x <= 50; x += 0.5) {
+        const wv = x / (x + k);
+        if (x === 0) ctx.moveTo(toX(x), toY(wv));
+        else ctx.lineTo(toX(x), toY(wv));
+      }
+      ctx.stroke();
+
+      // Inference marker
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath(); ctx.arc(toX(n), toY(wInf), 5.5, 0, Math.PI * 2); ctx.fill();
+
+      // LOO marker
+      ctx.fillStyle = '#10b981';
+      ctx.beginPath(); ctx.arc(toX(nLoo), toY(wLoo), 5.5, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#67e8f9';
+      ctx.fillText(`Inference (n=${n}, w=${wInf.toFixed(2)})`, pad.l + 8, 16);
+      ctx.fillStyle = '#6ee7b7';
+      ctx.fillText(`Train LOO (n-1=${nLoo}, w=${wLoo.toFixed(2)})`, pad.l + 205, 16);
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('Observations n (0 -> 50)', w - 165, h - 6);
+    }
+
+    function updateM3Loss() {
+      const cv = Number(document.getElementById('m3CvSlider').value);
+      document.getElementById('m3CvLabel').textContent = cv.toFixed(2);
+
+      const mu = 120.0;
+      const sigma = mu * cv;
+      // Lognormal parameters matching mean=mu, variance=sigma^2
+      const s2 = Math.log(1 + cv * cv);
+      const s = Math.sqrt(s2);
+      const mLog = Math.log(mu) - 0.5 * s2;
+      const q85True = Math.exp(mLog + 1.0364 * s);
+      const r85 = Math.max(1.03, q85True / mu);
+      const q85 = mu * r85;
+      const sigDerived = Math.max(0.05 * mu, (q85 - mu) / 1.036);
+
+      document.getElementById('m3MuOut').textContent = mu.toFixed(1) + ' s';
+      document.getElementById('m3R85Out').textContent = r85.toFixed(2) + 'x';
+      document.getElementById('m3Q85Out').textContent = q85.toFixed(1) + ' s';
+      document.getElementById('m3SigmaOut').textContent = sigDerived.toFixed(1) + ' s';
+
+      const canvas = document.getElementById('m3LossCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = { l: 40, r: 20, t: 24, b: 26 };
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+
+      // Left half: Right-Skewed Lognormal PDF vs Symmetric Gaussian
+      const halfW = pw * 0.54;
+      const xMax = 280;
+      const toX = (t) => pad.l + (t / xMax) * halfW;
+
+      const pdfLog = (x) => {
+        if (x <= 1) return 0;
+        const z = (Math.log(x) - mLog) / s;
+        return Math.exp(-0.5 * z * z) / (x * s * Math.sqrt(2 * Math.PI));
+      };
+      const pdfNorm = (x) => {
+        const z = (x - mu) / sigma;
+        return Math.exp(-0.5 * z * z) / (sigma * Math.sqrt(2 * Math.PI));
+      };
+
+      let maxPdf = 0.001;
+      for (let t = 20; t <= xMax; t += 2) {
+        maxPdf = Math.max(maxPdf, pdfLog(t), pdfNorm(t));
+      }
+      const toY = (p) => pad.t + ph - (p / (maxPdf * 1.12)) * ph;
+
+      // Symmetric Gaussian (MSE assumption)
+      ctx.strokeStyle = 'rgba(244, 63, 94, 0.75)';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      for (let t = 10; t <= xMax; t += 2) {
+        if (t === 10) ctx.moveTo(toX(t), toY(pdfNorm(t)));
+        else ctx.lineTo(toX(t), toY(pdfNorm(t)));
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Right-skewed Lognormal/Gamma distribution
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.14)';
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(toX(10), toY(0));
+      for (let t = 10; t <= xMax; t += 2) {
+        ctx.lineTo(toX(t), toY(pdfLog(t)));
+      }
+      ctx.lineTo(toX(xMax), toY(0));
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // mu and q85 vertical markers
+      const xMu = toX(mu), xQ85 = toX(Math.min(xMax - 5, q85));
+      ctx.strokeStyle = '#34d399';
+      ctx.beginPath(); ctx.moveTo(xMu, pad.t); ctx.lineTo(xMu, pad.t + ph); ctx.stroke();
+      ctx.strokeStyle = '#22d3ee';
+      ctx.beginPath(); ctx.moveTo(xQ85, pad.t); ctx.lineTo(xQ85, pad.t + ph); ctx.stroke();
+
+      ctx.font = '10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#fda4af'; ctx.fillText('Gaussian (MSE)', pad.l, 14);
+      ctx.fillStyle = '#6ee7b7'; ctx.fillText('Right-Skewed', pad.l + 100, 14);
+      ctx.fillStyle = '#67e8f9'; ctx.fillText(`q85=${q85.toFixed(0)}s`, Math.min(xQ85 + 4, pad.l + halfW - 55), pad.t + 14);
+
+      // Right half: Normalized Loss Functions around r = 1.0 (0.5 .. 2.0)
+      const rStartX = pad.l + halfW + 34;
+      const rW = pw - halfW - 34;
+      const toRX = (r) => rStartX + ((r - 0.5) / 1.5) * rW;
+      const toRY = (loss) => pad.t + ph - Math.min(1.0, loss / 0.8) * ph;
+
+      ctx.fillStyle = '#fcd34d';
+      ctx.fillText('Loss vs Ratio r = y/mu', rStartX, 14);
+
+      // MSE (r - 1)^2
+      ctx.strokeStyle = '#f43f5e';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      for (let r = 0.5; r <= 2.01; r += 0.05) {
+        const l = (r - 1.0) ** 2;
+        if (r === 0.5) ctx.moveTo(toRX(r), toRY(l));
+        else ctx.lineTo(toRX(r), toRY(l));
+      }
+      ctx.stroke();
+
+      // Gamma deviance: 2 * ((r - 1) - ln(r))
+      ctx.strokeStyle = '#10b981';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let r = 0.5; r <= 2.01; r += 0.05) {
+        const l = 2.0 * ((r - 1.0) - Math.log(r));
+        if (r === 0.5) ctx.moveTo(toRX(r), toRY(l));
+        else ctx.lineTo(toRX(r), toRY(l));
+      }
+      ctx.stroke();
+
+      // Pinball (alpha = 0.85) around r85
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let r = 0.5; r <= 2.01; r += 0.05) {
+        const err = r - r85;
+        const l = err >= 0 ? 0.85 * err : (0.85 - 1.0) * err;
+        if (r === 0.5) ctx.moveTo(toRX(r), toRY(l));
+        else ctx.lineTo(toRX(r), toRY(l));
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = '#fda4af'; ctx.fillText('MSE', rStartX + 4, h - 6);
+      ctx.fillStyle = '#6ee7b7'; ctx.fillText('Gamma', rStartX + 44, h - 6);
+      ctx.fillStyle = '#fde68a'; ctx.fillText('Pinball 0.85', rStartX + 94, h - 6);
+    }
+
+    ['m3NSlider', 'm3KSlider', 'm3YSlider', 'm3MSlider'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', updateM3Eb);
+    });
+    document.getElementById('m3CvSlider').addEventListener('input', updateM3Loss);
+
+    // =========================================================================
+    // MODULE 4: Sandbox 4A (Ratio Decay) & Sandbox 4B (O(1) Prefix Variance)
+    // =========================================================================
+    function setM4Kernel(g, tau) {
+      document.getElementById('m4GammaSlider').value = g;
+      document.getElementById('m4TauSlider').value = tau;
+      updateM4Decay();
+    }
+
+    function diurnalBaselineSec(hour) {
+      // Smooth 24h Delhi diurnal curve peaking around 09:00 and 18:30
+      const am = 52 * Math.exp(-((hour - 9.0) ** 2) / 3.8);
+      const pm = 58 * Math.exp(-((hour - 18.5) ** 2) / 4.2);
+      const mid = 22 * Math.exp(-((hour - 13.5) ** 2) / 14.0);
+      return 52 + am + pm + mid;
+    }
+
+    function updateM4Decay() {
+      const q0 = Number(document.getElementById('m4QSlider').value);
+      const dt = Number(document.getElementById('m4DtSlider').value);
+      const gamma0 = Number(document.getElementById('m4GammaSlider').value);
+      const tau = Number(document.getElementById('m4TauSlider').value);
+
+      document.getElementById('m4QVal').textContent = q0.toFixed(2) + 'x';
+      document.getElementById('m4DtVal').textContent = dt + ' m';
+      document.getElementById('m4GammaVal').textContent = gamma0.toFixed(2);
+      document.getElementById('m4TauVal').textContent = tau + ' m';
+
+      const tObsHr = 8.0; // 08:00 AM observation
+      const tQueryHr = tObsHr + dt / 60.0;
+      const muQ = diurnalBaselineSec(tQueryHr);
+      const alphaQ = gamma0 * Math.exp(-dt / tau);
+      const yHatQ = muQ * Math.max(0.2, 1 + alphaQ * (q0 - 1));
+      const pct = ((yHatQ - muQ) / muQ) * 100;
+
+      document.getElementById('m4BaseOut').textContent = muQ.toFixed(1) + ' s';
+      document.getElementById('m4AlphaOut').textContent = alphaQ.toFixed(3);
+      document.getElementById('m4YhatOut').textContent = `${yHatQ.toFixed(1)} s (${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%)`;
+
+      const canvas = document.getElementById('m4DecayCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = { l: 42, r: 18, t: 18, b: 26 };
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      const toX = (hr) => pad.l + (hr / 24) * pw;
+      const toY = (sec) => pad.t + ph - (sec / 220) * ph;
+
+      // Grid
+      ctx.strokeStyle = 'rgba(51, 65, 85, 0.5)';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      [0, 6, 12, 18, 24].forEach((hr) => {
+        const x = toX(hr);
+        ctx.beginPath(); ctx.moveTo(x, pad.t); ctx.lineTo(x, pad.t + ph); ctx.stroke();
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText(`${String(hr).padStart(2, '0')}:00`, x - 14, h - 6);
+      });
+
+      // Baseline mu_tensor[c, 96]
+      ctx.strokeStyle = '#64748b';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      for (let b = 0; b <= 96; b++) {
+        const hr = (b / 96) * 24;
+        const y = toY(diurnalBaselineSec(hr));
+        if (b === 0) ctx.moveTo(toX(hr), y);
+        else ctx.lineTo(toX(hr), y);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Blended curve starting at 08:00 AM
+      ctx.strokeStyle = '#22d3ee';
+      ctx.lineWidth = 2.6;
+      ctx.beginPath();
+      for (let m = 0; m <= 120; m++) {
+        const hr = tObsHr + m / 60.0;
+        const mu = diurnalBaselineSec(hr);
+        const alp = gamma0 * Math.exp(-m / tau);
+        const yh = Math.min(215, mu * Math.max(0.2, 1 + alp * (q0 - 1)));
+        if (m === 0) ctx.moveTo(toX(hr), toY(yh));
+        else ctx.lineTo(toX(hr), toY(yh));
+      }
+      ctx.stroke();
+
+      // Observation & Query points
+      const mu0 = diurnalBaselineSec(tObsHr);
+      const yObsRaw = Math.min(215, mu0 * q0);
+      ctx.fillStyle = '#f43f5e';
+      ctx.beginPath(); ctx.arc(toX(tObsHr), toY(yObsRaw), 5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#22d3ee';
+      ctx.beginPath(); ctx.arc(toX(tQueryHr), toY(Math.min(215, yHatQ)), 5.5, 0, Math.PI * 2); ctx.fill();
+
+      ctx.fillStyle = '#94a3b8'; ctx.fillText('--- mu_tensor[c, 96]', pad.l + 6, 14);
+      ctx.fillStyle = '#67e8f9'; ctx.fillText('— y_hat(t) blend', pad.l + 145, 14);
+      ctx.fillStyle = '#fda4af'; ctx.fillText(`● q0=${q0.toFixed(2)}x @08:00`, pad.l + 275, 14);
+    }
+
+    ['m4QSlider', 'm4DtSlider', 'm4GammaSlider', 'm4TauSlider'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', updateM4Decay);
+    });
+
+    // Sandbox 4B: O(1) Prefix Sum & Correlated Variance Explorer
+    const segMu = [2.4, 3.1, 1.9, 4.0, 2.7, 3.5, 2.2, 3.0];   // mins per segment
+    const segSig = [0.45, 0.70, 0.35, 0.95, 0.55, 0.80, 0.40, 0.65]; // sigma per segment
+    const prefT = [0], prefS1 = [0], prefS2 = [0];
+    for (let k = 0; k < segMu.length; k++) {
+      prefT.push(prefT[k] + segMu[k]);
+      prefS1.push(prefS1[k] + segSig[k]);
+      prefS2.push(prefS2[k] + segSig[k] * segSig[k]);
+    }
+    let m4StopI = 1, m4StopJ = 6;
+    let m4PickNext = 'j';
+
+    function setM4Rho(val) {
+      document.getElementById('m4RhoSlider').value = val;
+      updateM4Prefix();
+    }
+
+    function renderM4Stops() {
+      const strip = document.getElementById('m4StopStrip');
+      strip.innerHTML = '';
+      for (let k = 0; k < prefT.length; k++) {
+        const isI = k === m4StopI;
+        const isJ = k === m4StopJ;
+        const inRange = k > m4StopI && k < m4StopJ;
+        const btn = document.createElement('button');
+        btn.className = isI
+          ? 'px-2.5 py-1.5 rounded-md font-mono text-xs bg-emerald-500/25 border border-emerald-400 text-emerald-200 font-bold shrink-0'
+          : isJ
+            ? 'px-2.5 py-1.5 rounded-md font-mono text-xs bg-rose-500/25 border border-rose-400 text-rose-200 font-bold shrink-0'
+            : inRange
+              ? 'px-2.5 py-1.5 rounded-md font-mono text-xs bg-cyan-950/60 border border-cyan-700/60 text-cyan-300 shrink-0'
+              : 'px-2.5 py-1.5 rounded-md font-mono text-xs bg-slate-900 border border-slate-700 text-slate-400 hover:text-white shrink-0';
+        btn.textContent = isI ? `S${k} (i)` : isJ ? `S${k} (j)` : `S${k}`;
+        btn.onclick = () => {
+          if (m4PickNext === 'i' || k < m4StopI) {
+            m4StopI = Math.min(k, prefT.length - 2);
+            if (m4StopJ <= m4StopI) m4StopJ = m4StopI + 1;
+            m4PickNext = 'j';
+          } else {
+            m4StopJ = Math.max(k, m4StopI + 1);
+            m4PickNext = 'i';
+          }
+          renderM4Stops();
+          updateM4Prefix();
+        };
+        strip.appendChild(btn);
+      }
+    }
+
+    function updateM4Prefix() {
+      const rho = Number(document.getElementById('m4RhoSlider').value);
+      document.getElementById('m4RhoVal').textContent = rho.toFixed(2);
+
+      const mu = prefT[m4StopJ] - prefT[m4StopI];
+      const ds1 = prefS1[m4StopJ] - prefS1[m4StopI];
+      const ds2 = prefS2[m4StopJ] - prefS2[m4StopI];
+      const V = (1 - rho) * ds2 + rho * (ds1 * ds1);
+      const std = Math.sqrt(V);
+      const s2 = Math.log(1 + V / Math.max(0.01, mu * mu));
+      const q85 = mu * Math.max(1.03, Math.exp(-0.5 * s2 + 1.036 * Math.sqrt(s2)));
+
+      document.getElementById('m4MuLeg').textContent = mu.toFixed(2) + ' m';
+      document.getElementById('m4StdLeg').textContent = std.toFixed(2) + ' m';
+      document.getElementById('m4Q85Leg').textContent = q85.toFixed(2) + ' m';
+
+      const head = document.getElementById('m4PrefixHead');
+      head.innerHTML = '<th class="px-2 py-1.5 text-left">Array</th>' +
+        prefT.map((_, k) => {
+          const cls = k === m4StopI ? 'text-emerald-300 bg-emerald-950/60' : k === m4StopJ ? 'text-rose-300 bg-rose-950/60' : '';
+          return `<th class="px-2 py-1.5 ${cls}">k=${k}</th>`;
+        }).join('');
+
+      const rows = [
+        { label: 'Tcum[k]', arr: prefT, fmt: (v) => v.toFixed(1) },
+        { label: 'S1[k]', arr: prefS1, fmt: (v) => v.toFixed(2) },
+        { label: 'S2[k]', arr: prefS2, fmt: (v) => v.toFixed(2) },
+      ];
+      document.getElementById('m4PrefixBody').innerHTML = rows.map((r) =>
+        `<tr><td class="px-2 py-1.5 text-left font-bold text-slate-300">${r.label}</td>` +
+        r.arr.map((v, k) => {
+          const cls = k === m4StopI ? 'bg-emerald-950/50 text-emerald-300 font-bold' : k === m4StopJ ? 'bg-rose-950/50 text-rose-300 font-bold' : 'text-slate-400';
+          return `<td class="px-2 py-1.5 ${cls}">${r.fmt(v)}</td>`;
+        }).join('') + '</tr>'
+      ).join('');
+    }
+    document.getElementById('m4RhoSlider').addEventListener('input', updateM4Prefix);
+
+    // =========================================================================
+    // MODULE 5: Sandbox 5A (Chriqui-Robillard) & Sandbox 5B (Live + Poisson)
+    // =========================================================================
+    let m5Routes = [
+      { id: '425CL', eh: 18, t: 21 },
+      { id: '449UP', eh: 12, t: 23 },
+      { id: '405UP', eh: 10, t: 25 },
+      { id: '534UP', eh: 15, t: 29 },
+      { id: '729LC', eh: 20, t: 37 },
+    ];
+
+    function loadM5Preset(kind) {
+      if (kind === 'delhi') {
+        m5Routes = [
+          { id: '425CL', eh: 18, t: 21 },
+          { id: '449UP', eh: 12, t: 23 },
+          { id: '405UP', eh: 10, t: 25 },
+          { id: '534UP', eh: 15, t: 29 },
+          { id: '729LC', eh: 20, t: 37 },
+        ];
+      } else {
+        m5Routes = [
+          { id: 'EXP-1', eh: 16, t: 18 },
+          { id: 'EXP-2', eh: 14, t: 20 },
+          { id: 'STD-3', eh: 10, t: 26 },
+          { id: 'LOC-4', eh: 12, t: 33 },
+          { id: 'LOC-5', eh: 15, t: 42 },
+        ];
+      }
+      renderM5CrTable();
+    }
+
+    function solveCrAndRender() {
+      const sorted = m5Routes.map((r, idx) => ({ ...r, origIdx: idx })).sort((a, b) => a.t - b.t);
+      let lam = 0, wtT = 0;
+      let stopped = false;
+      const evalRows = sorted.map((r, pos) => {
+        const thresh = pos === 0 ? Infinity : (1 / lam + wtT / lam);
+        const accept = !stopped && (pos === 0 || r.t < thresh);
+        if (accept) {
+          const w = 1 / Math.max(1, r.eh);
+          lam += w;
+          wtT += w * r.t;
+        } else {
+          stopped = true;
+        }
+        return { ...r, thresh, accept };
+      });
+
+      const pooledWait = 1 / Math.max(1e-6, lam);
+      const tBar = wtT / Math.max(1e-6, lam);
+      const fastestEh = sorted[0].eh;
+
+      document.getElementById('m5SingleWait').textContent = fastestEh.toFixed(1) + ' min';
+      document.getElementById('m5PooledWait').textContent = pooledWait.toFixed(2) + ' min';
+      document.getElementById('m5TbarOut').textContent = tBar.toFixed(1) + ' min';
+
+      evalRows.forEach((row) => {
+        const thEl = document.getElementById(`m5Th_${row.origIdx}`);
+        const decEl = document.getElementById(`m5Dec_${row.origIdx}`);
+        if (thEl && decEl) {
+          thEl.textContent = row.thresh === Infinity ? 'First (always in)' : row.thresh.toFixed(1) + ' min';
+          if (row.accept) {
+            decEl.innerHTML = '<span class="px-2 py-0.5 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-bold">IN SET A</span>';
+          } else {
+            decEl.innerHTML = '<span class="px-2 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300">PRUNED</span>';
+          }
+        }
+      });
+    }
+
+    function renderM5CrTable() {
+      const tbody = document.getElementById('m5CrBody');
+      tbody.innerHTML = m5Routes.map((r, i) => `
+        <tr>
+          <td class="px-3 py-2 font-bold text-cyan-300">${r.id}</td>
+          <td class="px-3 py-2">
+            <input type="number" min="2" max="60" value="${r.eh}" data-idx="${i}" data-field="eh"
+              class="m5-cr-inp w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100 focus:border-cyan-400 outline-none" />
+          </td>
+          <td class="px-3 py-2">
+            <input type="number" min="5" max="90" value="${r.t}" data-idx="${i}" data-field="t"
+              class="m5-cr-inp w-16 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-100 focus:border-emerald-400 outline-none" />
+          </td>
+          <td id="m5Th_${i}" class="px-3 py-2 text-slate-300">-</td>
+          <td id="m5Dec_${i}" class="px-3 py-2">-</td>
+        </tr>
+      `).join('');
+
+      document.querySelectorAll('.m5-cr-inp').forEach((inp) => {
+        inp.addEventListener('input', (e) => {
+          const idx = Number(e.target.dataset.idx);
+          const field = e.target.dataset.field;
+          m5Routes[idx][field] = Math.max(2, Number(e.target.value) || 2);
+          solveCrAndRender();
+        });
+      });
+      solveCrAndRender();
+    }
+
+    // Sandbox 5B: Unified Live + Poisson Wait Simulator
+    function updateM5Poisson() {
+      const deltaMin = Number(document.getElementById('m5DeltaSlider').value);
+      const sigSec = Number(document.getElementById('m5SigSlider').value);
+      const covPct = Number(document.getElementById('m5CovSlider').value);
+      const ehMin = Number(document.getElementById('m5EhSlider').value);
+
+      document.getElementById('m5DeltaVal').textContent = deltaMin.toFixed(1) + ' m';
+      document.getElementById('m5SigVal').textContent = sigSec + ' s';
+      document.getElementById('m5CovVal').textContent = covPct + '%';
+      document.getElementById('m5EhVal').textContent = ehMin + ' m';
+
+      const deltaSec = deltaMin * 60;
+      const ehSec = ehMin * 60;
+      const cov = covPct / 100;
+
+      // Catch probability & gate checks (Ruling Q3)
+      const zCatch = deltaSec / Math.max(15, sigSec);
+      const catchProb = 0.9 * normCdf(zCatch);
+      const gate1 = deltaSec >= 0 && deltaSec <= 1500;
+      const gate2 = sigSec <= 0.5 * ehSec;
+      const gate3 = catchProb >= 0.5;
+      const gatePassed = gate1 && gate2 && gate3;
+
+      const lamPerSec = gatePassed ? Math.max(1e-5, (1 - cov) / ehSec) : (1 / ehSec);
+      const lamPerMin = lamPerSec * 60;
+      const x = lamPerSec * deltaSec;
+      const expTerm = gatePassed ? Math.exp(-x) : 0;
+      const ewSec = gatePassed
+        ? (x < 1e-5 ? deltaSec * (1 - 0.5 * x) : (1 - expTerm) / lamPerSec)
+        : ehSec;
+
+      document.getElementById('m5CatchProb').textContent = catchProb.toFixed(3);
+      document.getElementById('m5LambdaOut').textContent = lamPerMin.toFixed(3) + ' /min';
+      document.getElementById('m5ExpOut').textContent = gatePassed ? (expTerm * 100).toFixed(1) + '%' : '0% (Fallback)';
+      document.getElementById('m5EwOut').textContent = (ewSec / 60).toFixed(2) + ' min';
+
+      const badge = document.getElementById('m5GateBadge');
+      if (gatePassed) {
+        badge.textContent = 'LIVE GATE PASSED';
+        badge.className = 'text-[11px] font-mono px-2.5 py-1 rounded bg-emerald-950 border border-emerald-700 text-emerald-300 font-bold';
+      } else {
+        const why = !gate1 ? 'ETA > 25m' : !gate2 ? 'sigma_b > 0.5*EH' : 'catch < 0.5';
+        badge.textContent = `GATED OUT (${why}) -> PRIOR`;
+        badge.className = 'text-[11px] font-mono px-2.5 py-1 rounded bg-rose-950 border border-rose-700 text-rose-300 font-bold';
+      }
+
+      // Draw Wait CDF / Survival curve S(t) = exp(-Lambda * t) up to Delta*
+      const canvas = document.getElementById('m5PoissonCanvas');
+      const { ctx, w, h } = setupCanvas(canvas);
+      ctx.clearRect(0, 0, w, h);
+
+      const pad = { l: 44, r: 22, t: 22, b: 26 };
+      const pw = w - pad.l - pad.r;
+      const ph = h - pad.t - pad.b;
+      const tMax = 30;
+      const toX = (m) => pad.l + (m / tMax) * pw;
+      const toY = (prob) => pad.t + ph - prob * ph;
+
+      // Grid
+      ctx.strokeStyle = 'rgba(51, 65, 85, 0.5)';
+      ctx.font = '10px "JetBrains Mono", monospace';
+      [0, 0.5, 1.0].forEach((pv) => {
+        const y = toY(pv);
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+        ctx.fillStyle = '#94a3b8'; ctx.fillText(pv.toFixed(1), 10, y + 3);
+      });
+
+      // Shaded area under S(t) = exp(-Lambda * t) for [0, Delta*] => equals E[W_A] !
+      const limitM = gatePassed ? deltaMin : tMax;
+      ctx.fillStyle = gatePassed ? 'rgba(34, 211, 238, 0.16)' : 'rgba(244, 63, 94, 0.12)';
+      ctx.beginPath();
+      ctx.moveTo(toX(0), toY(0));
+      for (let m = 0; m <= limitM; m += 0.25) {
+        const sVal = Math.exp(-lamPerMin * m);
+        ctx.lineTo(toX(m), toY(sVal));
+      }
+      ctx.lineTo(toX(limitM), toY(0));
+      ctx.closePath();
+      ctx.fill();
+
+      // Curve
+      ctx.strokeStyle = gatePassed ? '#22d3ee' : '#f43f5e';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      for (let m = 0; m <= limitM; m += 0.25) {
+        const sVal = Math.exp(-lamPerMin * m);
+        if (m === 0) ctx.moveTo(toX(m), toY(sVal));
+        else ctx.lineTo(toX(m), toY(sVal));
+      }
+      ctx.stroke();
+
+      if (gatePassed) {
+        const xd = toX(deltaMin), yd = toY(expTerm);
+        ctx.strokeStyle = '#fbbf24';
+        ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.moveTo(xd, pad.t); ctx.lineTo(xd, pad.t + ph); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle = '#fbbf24';
+        ctx.beginPath(); ctx.arc(xd, yd, 5, 0, Math.PI * 2); ctx.fill();
+        ctx.fillText(`Delta*=${deltaMin.toFixed(1)}m`, Math.min(xd + 5, w - 95), pad.t + 14);
+      }
+
+      ctx.fillStyle = '#67e8f9';
+      ctx.fillText(`Area = E[W_A] = ${(ewSec / 60).toFixed(2)}m`, pad.l + 8, pad.t + 14);
+      ctx.fillStyle = '#64748b';
+      ctx.fillText('Wait Time t (0 -> 30 mins)', w - 165, h - 6);
+    }
+
+    ['m5DeltaSlider', 'm5SigSlider', 'm5CovSlider', 'm5EhSlider'].forEach((id) => {
+      document.getElementById(id).addEventListener('input', updateM5Poisson);
+    });
+
+    // =========================================================================
+    // Scroll-Spy for Sidebar & Init All Sandboxes
+    // =========================================================================
+    function initScrollSpy() {
+      const links = document.querySelectorAll('#sidebarNav a[data-target]');
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach((ent) => {
+          if (ent.isIntersecting) {
+            links.forEach((a) => a.classList.remove('active'));
+            const active = document.querySelector(`#sidebarNav a[data-target="${ent.target.id}"]`);
+            if (active) active.classList.add('active');
+          }
+        });
+      }, { rootMargin: '-25% 0px -60% 0px' });
+      document.querySelectorAll('article[id^="module-"]').forEach((art) => observer.observe(art));
+    }
+
+    function renderAll() {
+      updateM1Payload();
+      initM1RouteButtons();
+      drawM1Csr();
+      drawM2Proj();
+      drawM2Pava();
+      updateM3Eb();
+      updateM3Loss();
+      updateM4Decay();
+      renderM4Stops();
+      updateM4Prefix();
+      renderM5CrTable();
+      updateM5Poisson();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      renderAll();
+      initScrollSpy();
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: '$$', right: '$$', display: true },
+            { left: '$', right: '$', display: false },
+          ],
+          throwOnError: false,
+        });
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      drawM1Csr();
+      drawM2Proj();
+      drawM2Pava();
+      updateM3Eb();
+      updateM3Loss();
+      updateM4Decay();
+      updateM5Poisson();
+    });
+  </script>
+</body>
+</html>
